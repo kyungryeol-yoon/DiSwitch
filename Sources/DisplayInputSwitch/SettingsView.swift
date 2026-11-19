@@ -129,46 +129,91 @@ struct MenuBarPreview: View {
 
 struct InputSettings: View {
   @EnvironmentObject private var store: Store
+  @State private var selected: String?
+
+  /// 지금 연결된 모니터 먼저, 그다음 예전에 본 모니터
+  private var keys: [String] {
+    let connected = store.monitors.map(\.key).filter { store.configs[$0] != nil }
+    return connected + store.configs.keys.filter { !connected.contains($0) }.sorted()
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("메뉴에 보일 입력").font(.headline)
-      Text("이름은 마음대로 붙이세요(예: 맥북, 닌텐도). 번호는 모니터마다 표준과 다를 수 있어요.")
-        .foregroundStyle(.secondary)
+      if keys.isEmpty {
+        Text(store.scanning.isEmpty ? "DDC로 제어할 수 있는 모니터가 없어요." : "모니터에서 입력 번호를 읽는 중…")
+          .foregroundStyle(.secondary)
+        Spacer()
+      } else {
+        let key = selected.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+        if keys.count > 1 {
+          Picker("모니터", selection: Binding(get: { key }, set: { selected = $0 })) {
+            ForEach(keys, id: \.self) { k in
+              Text(store.configs[k]?.name ?? k) + Text(store.monitors.contains { $0.key == k } ? "" : " (연결 안 됨)")
+            }
+          }
+          .frame(width: 320)
+        } else {
+          Text(store.configs[key]?.name ?? key).font(.headline)
+        }
+        InputList(key: key)
+      }
+    }
+    .padding(20)
+  }
+}
+
+struct InputList: View {
+  @EnvironmentObject private var store: Store
+  let key: String
+
+  private var config: Binding<MonitorConfig> {
+    Binding(get: { store.configs[key] ?? MonitorConfig(name: "", inputs: [], thisMac: nil, fromMonitor: false) },
+            set: { store.configs[key] = $0 })
+  }
+
+  var body: some View {
+    let c = config.wrappedValue
+    VStack(alignment: .leading, spacing: 10) {
+      Text(c.fromMonitor
+           ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요."
+           : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.")
+        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
       HStack {
-        Text("보임").frame(width: 36)
-        Text("이름").frame(maxWidth: .infinity, alignment: .leading)
-        Text("번호").frame(width: 60, alignment: .leading)
-        Spacer().frame(width: 24)
+        Text("메뉴").frame(width: 36)
+        Text("번호").frame(width: 120, alignment: .leading)
+        Text("별칭").frame(maxWidth: .infinity, alignment: .leading)
       }
       .font(.caption).foregroundStyle(.secondary)
 
       ScrollView {
         VStack(spacing: 6) {
-          ForEach($store.inputs) { $slot in
+          ForEach(config.inputs) { $slot in
             HStack {
               Toggle("", isOn: $slot.enabled).labelsHidden().frame(width: 36)
-              TextField("이름", text: $slot.name).textFieldStyle(.roundedBorder)
-              TextField("번호", value: $slot.code, format: .number.grouping(.never))
-                .textFieldStyle(.roundedBorder).frame(width: 60)
-              Button { store.inputs.removeAll { $0.id == slot.id } } label: {
-                Image(systemName: "minus.circle")
+              VStack(alignment: .leading, spacing: 0) {
+                Text("\(slot.code)" + (slot.code == c.thisMac ? "  · 이 맥" : "")).monospacedDigit()
+                Text(InputSlot.standardName(slot.code).map { "표준: \($0)" } ?? "표준에 없는 번호")
+                  .font(.caption2).foregroundStyle(.secondary)
               }
-              .buttonStyle(.borderless).frame(width: 24)
+              .frame(width: 120, alignment: .leading)
+              TextField("입력 \(slot.code)", text: $slot.name).textFieldStyle(.roundedBorder)
             }
           }
         }
       }
 
       HStack {
-        Button("입력 추가") { store.inputs.append(InputSlot(name: "새 입력", code: 0)) }
-        Button("기본값으로") { store.inputs = InputSlot.defaults }
+        if let m = store.monitors.first(where: { $0.key == key }) {
+          Button(store.scanning.contains(key) ? "읽는 중…" : "모니터에서 번호 다시 읽기") {
+            store.scanInputs(key: key, ddc: m.ddc)
+          }
+          .disabled(store.scanning.contains(key))
+        }
         Spacer()
       }
-      Text("표준 번호: DisplayPort 1 = 15 · DisplayPort 2 = 16 · HDMI 1 = 17 · HDMI 2 = 18 · USB-C = 27")
-        .font(.caption).foregroundStyle(.secondary)
+      Text("「이 맥」은 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
+        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
-    .padding(20)
   }
 }

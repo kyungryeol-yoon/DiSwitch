@@ -21,6 +21,8 @@ enum VCP {
 /// 바깥 모니터 하나. DDC 명령은 시간이 걸리니(수십~수백 ms) 메인 스레드 밖에서 부를 것
 final class DDCMonitor: @unchecked Sendable {
   let name: String
+  /// 모니터를 구분하는 값(EDID 제조사·모델·일련번호). 같은 모델 두 대도 구분됨
+  let key: String
   private let av: CFTypeRef
   private let lock = NSLock()   // 한 모니터에 명령이 겹치지 않게
 
@@ -28,7 +30,10 @@ final class DDCMonitor: @unchecked Sendable {
 
   private init(av: CFTypeRef) {
     self.av = av
-    self.name = Self.edidName(av)
+    var out: Unmanaged<CFData>?
+    let edid = IOAVServiceCopyEDID(av, &out) == KERN_SUCCESS ? out?.takeRetainedValue() as Data? : nil
+    self.name = edid.flatMap(Self.edidName) ?? "알 수 없는 모니터"
+    self.key = edid.map { $0.count >= 16 ? $0[8..<16].map { String(format: "%02X", $0) }.joined() : "" } ?? ""
   }
 
   /// 연결된 바깥 모니터 전부(DDC 응답 여부와 상관없이)
@@ -46,14 +51,12 @@ final class DDCMonitor: @unchecked Sendable {
   }
 
   /// EDID에서 모니터 이름(0xFC 칸)
-  private static func edidName(_ av: CFTypeRef) -> String {
-    var out: Unmanaged<CFData>?
-    guard IOAVServiceCopyEDID(av, &out) == KERN_SUCCESS, let d = out?.takeRetainedValue() as Data? else { return "알 수 없는 모니터" }
+  private static func edidName(_ d: Data) -> String? {
     for o in stride(from: 54, to: min(126, d.count - 17), by: 18) where d[o] == 0 && d[o + 1] == 0 && d[o + 3] == 0xFC {
       let s = String(decoding: d[(o + 5)..<(o + 18)], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
       if !s.isEmpty { return s }
     }
-    return "알 수 없는 모니터"
+    return nil
   }
 
   private func send(_ body: [UInt8]) -> Bool {
@@ -83,5 +86,50 @@ final class DDCMonitor: @unchecked Sendable {
   func write(_ vcp: UInt8, _ value: Int) -> Bool {
     lock.lock(); defer { lock.unlock() }
     return send([0x84, 0x03, vcp, UInt8(value >> 8 & 0xFF), UInt8(value & 0xFF)])
+  }
+
+  /// 기능 목록(capabilities) 문자열. 명령 0xF3 + 오프셋을 32바이트씩 이어 읽음. 안 알려 주는 모니터는 nil
+  func capabilities() -> String? {
+    lock.lock(); defer { lock.unlock() }
+    var s = [UInt8](), off = 0, fails = 0
+    while fails < 5, s.count < 8192 {
+      guard send([0x83, 0xF3, UInt8(off >> 8 & 0xFF), UInt8(off & 0xFF)]) else { fails += 1; continue }
+      usleep(60_000)
+      var b = [UInt8](repeating: 0, count: 38)
+      guard IOAVServiceReadI2C(av, Self.addr, 0, &b, 38) == KERN_SUCCESS, b[2] == 0xE3,
+            Int(b[3]) << 8 | Int(b[4]) == off else { fails += 1; continue }
+      let len = Int(b[1] & 0x7F) - 3
+      if len <= 0 { break }   // 끝
+      s += b[5..<(5 + min(len, 32))]; off += len; fails = 0
+    }
+    let str = String(decoding: s.filter { $0 != 0 }, as: UTF8.self)
+    return str.contains("vcp") ? str : nil
+  }
+
+  /// 기능 목록에서 입력 소스(VCP 0x60)가 받는 값들. 예: "vcp(... 60(11 12 0F) ...)" → [17, 18, 15]
+  static func inputCodes(fromCapabilities caps: String) -> [Int]? {
+    guard let start = caps.range(of: "vcp(") else { return nil }
+    var depth = 0, token = "", capturing = false, inner = ""
+    for ch in caps[start.upperBound...] {
+      if capturing {
+        if ch == ")" { break }
+        inner.append(ch); continue
+      }
+      switch ch {
+      case "(":
+        if depth == 0, token.uppercased() == "60" { capturing = true }
+        depth += 1; token = ""
+      case ")":
+        if depth == 0 { return nil }   // vcp( 끝까지 60이 없음
+        depth -= 1; token = ""
+      case " ":
+        token = ""
+      default:
+        if depth == 0 { token.append(ch) }
+      }
+    }
+    guard capturing else { return nil }
+    let codes = inner.split(separator: " ").compactMap { Int($0, radix: 16) }
+    return codes.isEmpty ? nil : codes
   }
 }

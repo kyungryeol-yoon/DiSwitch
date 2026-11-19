@@ -1,30 +1,64 @@
 import AppKit
 import SwiftUI
 
-/// 입력 하나(이름은 사용자가 붙임, 번호는 모니터에 보내는 VCP 0x60 값)
+/// 입력 하나(번호는 모니터에 보내는 VCP 0x60 값, 이름은 사용자가 붙인 별칭 — 비어 있으면 「입력 N」)
 struct InputSlot: Codable, Identifiable, Hashable {
   var id = UUID()
-  var name: String
+  var name = ""
   var code: Int
   var enabled = true
 
-  /// MCCS 표준 번호. 모니터마다 다를 수 있음(예: 필립스 32M2N8900 USB-C = 15)
-  static let defaults: [InputSlot] = [
-    .init(name: "DisplayPort 1", code: 15),
-    .init(name: "DisplayPort 2", code: 16),
-    .init(name: "HDMI 1", code: 17),
-    .init(name: "HDMI 2", code: 18),
-    .init(name: "USB-C", code: 27),
-  ]
+  var displayName: String { name.isEmpty ? "입력 \(code)" : name }
+
+  /// MCCS 표준표의 이름. 모니터마다 다를 수 있어서(필립스 32M2N8900은 15번이 USB-C) 참고로만 보여 줌
+  static func standardName(_ code: Int) -> String? {
+    switch code {
+    case 0x01: "VGA 1"
+    case 0x02: "VGA 2"
+    case 0x03: "DVI 1"
+    case 0x04: "DVI 2"
+    case 0x0F: "DisplayPort 1"
+    case 0x10: "DisplayPort 2"
+    case 0x11: "HDMI 1"
+    case 0x12: "HDMI 2"
+    case 0x1B: "USB-C"
+    default: nil
+    }
+  }
+
+  /// 모니터가 기능 목록을 안 알려 줄 때 쓰는 흔한 번호
+  static let fallbackCodes = [0x0F, 0x10, 0x11, 0x12, 0x1B]
+}
+
+/// 모니터 한 대의 설정(저장됨)
+struct MonitorConfig: Codable {
+  var name: String
+  var inputs: [InputSlot]
+  /// 이 맥이 연결된 입력 번호(이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력)
+  var thisMac: Int?
+  /// 입력 목록을 모니터의 기능 목록에서 가져왔는지(false면 흔한 번호로 짐작한 것)
+  var fromMonitor: Bool
+
+  /// 모니터가 알려 준 번호로 목록을 만듦. 표준표에 있는 번호만 보이게 하고 나머지는 숨김
+  static func make(name: String, codes: [Int]?) -> MonitorConfig {
+    let list = Array(Set(codes ?? InputSlot.fallbackCodes)).sorted()
+    return MonitorConfig(
+      name: name,
+      inputs: list.map { InputSlot(code: $0, enabled: InputSlot.standardName($0) != nil) },
+      thisMac: nil,
+      fromMonitor: codes != nil)
+  }
 }
 
 /// 메뉴에 보여 줄 모니터 상태
 struct MonitorItem: Identifiable {
-  let id: Int            // 순번(연결 순서)
+  var id: String { key }
+  let key: String        // MonitorConfig를 찾는 열쇠
   let name: String
   let ddc: DDCMonitor
   var current: Int?      // 지금 입력 번호, 못 읽으면 nil
   var responds: Bool     // DDC 응답이 한 번이라도 있었는지
+  var checked: Bool      // 한 번이라도 읽어 봤는지(응답 없는 모니터는 확인에 20초 넘게 걸리기도 함)
 }
 
 enum MenuIcon {
@@ -46,49 +80,101 @@ enum MenuIcon {
 final class Store: ObservableObject {
   @Published var monitors: [MonitorItem] = []
   @Published var loading = true
-  @Published var inputs: [InputSlot] {
-    didSet { if let d = try? JSONEncoder().encode(inputs) { UserDefaults.standard.set(d, forKey: "inputs") } }
+  @Published var configs: [String: MonitorConfig] {
+    didSet { if let d = try? JSONEncoder().encode(configs) { UserDefaults.standard.set(d, forKey: "monitors") } }
   }
+  /// 기능 목록을 읽는 중인 모니터(처음 한 번, 몇 초 걸림)
+  @Published var scanning: Set<String> = []
 
   private var lastRefresh = Date.distantPast
   private var menuObserver: NSObjectProtocol?
 
   init() {
-    if let d = UserDefaults.standard.data(forKey: "inputs"), let v = try? JSONDecoder().decode([InputSlot].self, from: d) {
-      inputs = v
+    if let d = UserDefaults.standard.data(forKey: "monitors"), let v = try? JSONDecoder().decode([String: MonitorConfig].self, from: d) {
+      configs = v
     } else {
-      inputs = InputSlot.defaults
+      configs = [:]
     }
     refresh()
-    // 메뉴를 열 때마다 지금 입력을 다시 읽음(너무 잦으면 건너뜀)
+    // 메뉴를 열 때마다 지금 입력을 다시 읽음. 메뉴를 열었다 = 모니터가 이 맥을 보여 주는 중 → 이 맥의 입력 번호로 기억
     menuObserver = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self, Date().timeIntervalSince(self.lastRefresh) > 3 else { return }
-        self.refresh()
+        self.refresh(rememberThisMac: true)
       }
     }
   }
 
-  func name(of code: Int) -> String? { inputs.first { $0.code == code }?.name }
+  func config(_ m: MonitorItem) -> MonitorConfig? { configs[m.key] }
+
+  /// 메뉴에 보일 입력들
+  func visibleInputs(_ m: MonitorItem) -> [InputSlot] { config(m)?.inputs.filter(\.enabled) ?? [] }
+
+  func slot(_ m: MonitorItem, code: Int) -> InputSlot? { config(m)?.inputs.first { $0.code == code } }
 
   /// 모니터 목록과 지금 입력을 다시 읽음(메인 스레드 밖에서)
-  func refresh() {
+  /// rememberThisMac: 메뉴를 열 때 부름 — 지금 입력을 이 맥의 입력으로 기억하고, 응답 없던 모니터는 다시 읽지 않음
+  /// (응답 없는 모니터는 확인하는 데 20초 넘게 걸리기도 함. 「새로고침」은 전부 다시 읽음)
+  func refresh(rememberThisMac: Bool = false) {
     lastRefresh = Date()
-    let known = Dictionary(uniqueKeysWithValues: monitors.map { ($0.name + "#\($0.id)", $0) })
+    let old = Dictionary(monitors.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+    let skip = rememberThisMac ? Set(monitors.filter { $0.checked && !$0.responds }.map(\.key)) : []
     Task.detached {
-      let found = DDCMonitor.all().enumerated().map { i, m in
-        let cur = m.read(VCP.input)?.current
-        return (i, m, cur)
-      }
+      let all = DDCMonitor.all().enumerated().map { i, m in (key: m.key.isEmpty ? "\(m.name)#\(i)" : m.key, ddc: m) }
       await MainActor.run {
-        self.monitors = found.map { i, m, cur in
-          // 입력을 바꾸는 중엔 잠깐 못 읽으니 전에 읽은 값을 유지
-          let old = known[m.name + "#\(i)"]
-          return MonitorItem(id: i, name: m.name, ddc: m, current: cur ?? old?.current, responds: cur != nil || (old?.responds ?? false))
+        // 목록은 바로 보여 주고, 입력은 모니터마다 따로 읽어서 나오는 대로 채움(느린 모니터가 다른 모니터를 막지 않게)
+        self.monitors = all.map { m in
+          let o = old[m.key]
+          return MonitorItem(key: m.key, name: m.ddc.name, ddc: m.ddc, current: o?.current,
+                             responds: o?.responds ?? false, checked: o?.checked ?? false)
         }
         self.loading = false
       }
+      for m in all where !skip.contains(m.key) {
+        Task.detached {
+          let cur = m.ddc.read(VCP.input)?.current
+          await MainActor.run { self.update(key: m.key, ddc: m.ddc, current: cur, rememberThisMac: rememberThisMac) }
+        }
+      }
     }
+  }
+
+  private func update(key: String, ddc: DDCMonitor, current: Int?, rememberThisMac: Bool) {
+    guard let i = monitors.firstIndex(where: { $0.key == key }) else { return }
+    // 입력을 바꾸는 중엔 잠깐 못 읽으니 전에 읽은 값을 유지
+    if let current { monitors[i].current = current; monitors[i].responds = true }
+    monitors[i].checked = true
+    guard let current else { return }
+    if configs[key] == nil { scanInputs(key: key, ddc: ddc) }
+    if rememberThisMac, configs[key] != nil, configs[key]?.thisMac != current { configs[key]?.thisMac = current }
+  }
+
+  /// 모니터에게 입력 번호 목록을 물어서 입력 목록을 (다시) 만듦. 이미 붙인 별칭은 번호가 같으면 유지
+  func scanInputs(key: String, ddc: DDCMonitor) {
+    guard !scanning.contains(key) else { return }
+    scanning.insert(key)
+    Task.detached {
+      let codes = ddc.capabilities().flatMap(DDCMonitor.inputCodes)
+      await MainActor.run {
+        var new = MonitorConfig.make(name: ddc.name, codes: codes)
+        // 이미 붙인 별칭과 보임 여부는 유지(0.1의 모니터 공통 목록 "inputs"도 처음 한 번 옮겨 옴)
+        let prev = self.configs[key]?.inputs ?? Self.takeLegacyInputs()
+        new.thisMac = self.configs[key]?.thisMac
+        new.inputs = new.inputs.map { s in prev.first { $0.code == s.code } ?? s }
+        self.configs[key] = new
+        self.scanning.remove(key)
+      }
+    }
+  }
+
+  /// 0.1에서 쓰던 모니터 공통 입력 목록을 꺼내고 지움(한 번만)
+  private static func takeLegacyInputs() -> [InputSlot] {
+    struct Old: Codable { var name: String; var code: Int; var enabled: Bool }
+    guard let d = UserDefaults.standard.data(forKey: "inputs") else { return [] }
+    UserDefaults.standard.removeObject(forKey: "inputs")
+    let old = (try? JSONDecoder().decode([Old].self, from: d)) ?? []
+    // 표준 이름 그대로였던 건 별칭이 아니므로 비움
+    return old.map { InputSlot(name: InputSlot.standardName($0.code) == $0.name ? "" : $0.name, code: $0.code, enabled: $0.enabled) }
   }
 
   func switchInput(_ monitor: MonitorItem, to code: Int) {

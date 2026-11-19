@@ -30,18 +30,21 @@ struct MenuContent: View {
     }
     ForEach(store.monitors) { m in
       Section(m.name) {
-        if m.responds {
-          ForEach(store.inputs.filter(\.enabled)) { slot in
-            Toggle(slot.name, isOn: Binding(
+        if !m.responds {
+          Text(m.checked ? "DDC 응답 없음 — 전환할 수 없음" : "확인 중…")
+        } else if store.config(m) == nil {
+          Text("입력 번호를 모니터에서 읽는 중…")
+        } else {
+          let thisMac = store.config(m)?.thisMac
+          ForEach(store.visibleInputs(m)) { slot in
+            Toggle(slot.displayName + (slot.code == thisMac ? " (이 맥)" : ""), isOn: Binding(
               get: { m.current == slot.code },
               set: { _ in store.switchInput(m, to: slot.code) }
             ))
           }
-          if let c = m.current, store.name(of: c) == nil {
-            Text("지금 입력: 번호 \(c) (목록에 없음)")
+          if let c = m.current, !store.visibleInputs(m).contains(where: { $0.code == c }) {
+            Text("지금 입력: \(store.slot(m, code: c)?.displayName ?? "입력 \(c)") (메뉴에 숨김)")
           }
-        } else {
-          Text("DDC 응답 없음 — 전환할 수 없음")
         }
       }
     }
