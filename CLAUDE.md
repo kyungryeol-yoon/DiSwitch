@@ -21,8 +21,15 @@
 - 맥북은 덮개를 닫은 채(클램셸) 쓰면, 모니터가 다른 입력으로 가 있는 동안 잠듦 → 돌아와도 「신호 없음」. **맥북으로 넘길 때 깨우기**가 필요(키보드 누르기 / 맥북에도 앱을 깔아 네트워크로 깨우기 등 — 정할 것)
 
 ## 지금 있는 것
+- 메뉴 막대 앱 `Sources/DisplayInputSwitch/`(SwiftPM + SwiftUI `MenuBarExtra`, macOS 15+) — `./build.sh` → `build/DisplayInputSwitch.app`
+  - `DDC.swift` 모니터 읽기/쓰기 · `Store.swift` 상태·입력 목록(UserDefaults) · `App.swift` 메뉴 · `SettingsView.swift` 설정창(일반·아이콘·입력 탭)
+  - 배포: `./build.sh` → `build/DisplayInputSwitch-<버전>.zip`(GitHub Releases에 올림). 애플 개발자 서명·공증은 **안 함**(ad-hoc 서명, 받은 사람은 처음 한 번 「그래도 열기」) · `./build.sh install` → /Applications에 복사·재실행
+  - 설정 「일반」 탭: 로그인할 때 자동 실행(SMAppService)
+  - 메뉴 막대 아이콘은 설정창에서 SF Symbols 후보를 고르거나 이름을 넣어 바꿈(`rectangle.on.rectangle`은 화면 미러링과 같아서 후보에서 뺌)
 - `Sources/ddc.swift` — 시험용 명령줄(`swiftc -O -o ddc Sources/ddc.swift -framework IOKit`)
-  - `./ddc list` 모니터 이름·입력·밝기(읽기만) · `./ddc set <순번> <입력> [되돌릴 초]`
+  - `./ddc list` 모니터 이름·입력·밝기(읽기만) · `./ddc set <순번> <입력> [되돌릴 초]` · `./ddc caps <순번>` 기능 목록
+- 기능 목록(capabilities, 명령 0xF3): 필립스는 `60(11 12 0F 15 21 22 2F 35)` — 입력 번호 후보가 나옴(17·18·15는 확인, 21·33·34·47·53은 모름). BenQ는 0바이트
+  - → 입력 번호 찾기는 이 목록에 있는 번호만 시도하면 됨. 어느 포트에 무슨 기기가 꽂혔는지·신호가 있는지는 DDC로 알 수 없음(지금 보여 주는 입력 번호만)
 
 ## 할 일(계획)
 1. 메뉴 막대 앱: 입력마다 이름(「닌텐도」「맥북」), 지금 입력 표시, 전역 단축키, 모니터는 이름으로 고름

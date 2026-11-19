@@ -76,4 +76,18 @@ if a.count < 2 || a[1] == "list" {
     Thread.sleep(forTimeInterval: sec)
     print("\(sec)초 뒤 → \(b) 되돌림: \(set(m.av, 0x60, b) ? "성공" : "실패")")
   }
-} else { print("ddc list | ddc set <n> <입력> [되돌릴 초]") }
+} else if a[1] == "caps", a.count >= 3, let n = Int(a[2]), n >= 1, n <= ms.count {
+  // 기능 목록(capabilities) 읽기: 0xF3 + 오프셋, 응답은 b[2]=0xE3, b[3..4] 오프셋, b[5...] 글자
+  let m = ms[n - 1]; var s = [UInt8](), off = 0, tries = 0
+  while tries < 5 {
+    guard send(m.av, [0x83, 0xF3, UInt8(off >> 8), UInt8(off & 0xFF)]) else { tries += 1; continue }
+    usleep(60_000)
+    var b = [UInt8](repeating: 0, count: 38)
+    guard IOAVServiceReadI2C(m.av, DDC_ADDR, 0, &b, 38) == KERN_SUCCESS, b[2] == 0xE3,
+          Int(b[3]) << 8 | Int(b[4]) == off else { tries += 1; continue }
+    let len = Int(b[1] & 0x7F) - 3
+    if len <= 0 { break }
+    s += b[5..<(5 + min(len, 32))]; off += len; tries = 0
+  }
+  print("\(m.name) 기능 목록(\(s.count)바이트):\n\(String(decoding: s.filter { $0 != 0 }, as: UTF8.self))")
+} else { print("ddc list | ddc set <n> <입력> [되돌릴 초] | ddc caps <n>") }
