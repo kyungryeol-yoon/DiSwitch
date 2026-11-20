@@ -54,7 +54,7 @@
 ## 다음 세션에서 이어서 할 것(2026-11-20 기준)
 - [x] 이름 변경·아이콘·LICENSE·자동 릴리스 등 커밋·푸시, 저장소 이름 `DiSwitch`·`homebrew-tap` 만들기·remote 주소·로컬 폴더 이동(2026-11-20)
 - [x] `v0.1.0` 릴리스(Actions 성공, zip 첨부) · `brew install --cask kyungryeol-yoon/tap/diswitch`로 이 맥에 설치 → quarantine 없음·실행 확인(2026-11-20)
-- [ ] **`TAP_TOKEN` Secret 넣기**(사용자) — v0.1.0 땐 없어서 tap 갱신이 건너뛰어졌고, cask는 손으로 올림(homebrew-tap `a25e4b7`). 다음 태그부터 자동이 되는지 확인
+- [ ] `TAP_TOKEN` Secret 넣음(2026-11-20, 처음엔 `TAB_TOKEN`으로 잘못 넣었다가 다시 만듦). v0.1.0 cask는 손으로 올림(homebrew-tap `a25e4b7`) → **다음 태그 때 「Update Homebrew tap」 단계가 success인지 확인**
 - [ ] 설정 「일반」 탭에서 로그인 자동 실행이 brew로 깐 앱에서도 켜지는지 확인(앱 위치가 바뀐 뒤라 다시 켜야 할 수 있음)
 - [ ] 맥북에서 시험: 덮개 닫고 입력 넘겼다 돌아올 때 잠드는지(`pmset -g log | grep -E " Sleep | Wake "`) — 맥북 설정(잠금 화면·배터리 옵션)은 안내함
 - [ ] 메뉴에서 BenQ 화면으로 메뉴 열기 시험: ✓는 필립스가 보여 주는 입력, 현재 디스플레이 표시는 맥 미니(18) 그대로인지
