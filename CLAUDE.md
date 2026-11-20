@@ -43,7 +43,7 @@
   - 버전 = 환경 변수 `VERSION` > 가장 가까운 git 태그 `v*` > 0.0.0. 빌드 번호 = 커밋 수
   - 애플 개발자 서명·공증은 **안 함**(ad-hoc 서명). 라이선스 MIT(저작권자 「Yoon」)
 - 배포(2026-11-20 정함): **태그 `vX.Y.Z` 푸시 → `.github/workflows/release.yml`**(macos-15 러너)이 빌드 → GitHub Release에 zip → `kyungryeol-yoon/homebrew-tap`(공개)의 `Casks/diswitch.rb` 갱신
-  - cask 틀은 `packaging/diswitch.rb`(postflight에서 quarantine 지움 → 「그래도 열기」 없이 열림), 릴리스 설명은 `packaging/release-notes.md`
+  - cask 틀은 `packaging/diswitch.rb`(postflight_steps에서 quarantine 지움 → 「그래도 열기」 없이 열림. 2026-11-21 Homebrew 7.0 경고로 옛 `postflight do`·`">= :sequoia"`에서 새 문법으로 바꿈 — Hum 세션에서 시험), 릴리스 설명은 `packaging/release-notes.md`
   - tap 갱신엔 이 저장소 Secret `TAP_TOKEN` 필요(없으면 건너뜀). tap 저장소 하나에 앞으로 만들 앱도 다 넣음
   - 설치: `brew install --cask kyungryeol-yoon/tap/diswitch`
 - `Sources/ddc.swift` — 시험용 명령줄(`swiftc -O -o ddc Sources/ddc.swift -framework IOKit`)
