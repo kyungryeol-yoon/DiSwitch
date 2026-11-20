@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct DisplayInputSwitchApp: App {
+struct DiSwitchApp: App {
   @StateObject private var store = Store()
   @AppStorage("menuIcon") private var icon = MenuIcon.fallback
 
@@ -12,7 +12,7 @@ struct DisplayInputSwitchApp: App {
       Image(systemName: MenuIcon.exists(icon) ? icon : MenuIcon.fallback)
     }
 
-    Window("DisplayInputSwitch 설정", id: "settings") {
+    Window("DiSwitch 설정", id: "settings") {
       SettingsView().environmentObject(store)
     }
     .windowResizability(.contentSize)
@@ -23,6 +23,7 @@ struct DisplayInputSwitchApp: App {
 struct MenuContent: View {
   @EnvironmentObject private var store: Store
   @Environment(\.openWindow) private var openWindow
+  @AppStorage("thisMacMark") private var mark = ThisMacMark.fallback
 
   var body: some View {
     if store.monitors.isEmpty {
@@ -37,7 +38,7 @@ struct MenuContent: View {
         } else {
           let thisMac = store.config(m)?.thisMac
           ForEach(store.visibleInputs(m)) { slot in
-            Toggle(slot.displayName + (slot.code == thisMac ? " (이 맥)" : ""), isOn: Binding(
+            Toggle(slot.displayName + (slot.code == thisMac ? "  " + mark : ""), isOn: Binding(
               get: { m.current == slot.code },
               set: { _ in store.switchInput(m, to: slot.code) }
             ))

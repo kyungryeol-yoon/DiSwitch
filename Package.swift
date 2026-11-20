@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-  name: "DisplayInputSwitch",
+  name: "DiSwitch",
   platforms: [.macOS(.v15)],
   targets: [
     .executableTarget(
-      name: "DisplayInputSwitch",
-      path: "Sources/DisplayInputSwitch",
+      name: "DiSwitch",
+      path: "Sources/DiSwitch",
       linkerSettings: [.linkedFramework("IOKit")]
     )
   ],

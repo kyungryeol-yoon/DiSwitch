@@ -1,6 +1,6 @@
-# DisplayInputSwitch
+# DiSwitch
 
-맥 메뉴 막대에서 클릭 한 번으로 바깥 모니터의 **입력 소스**(HDMI·DisplayPort·USB-C …)를 바꾸는 앱이에요.
+**Di**splay **I**nput **Switch** — 맥 메뉴 막대에서 클릭 한 번으로 바깥 모니터의 **입력 소스**(HDMI·DisplayPort·USB-C …)를 바꾸는 앱이에요.
 모니터 버튼을 더듬어 메뉴를 찾을 필요 없이, 맥·노트북·게임기를 오가며 쓸 수 있어요.
 
 *A tiny macOS menu bar app that switches your external monitor's input source over DDC/CI. Apple silicon, macOS 15+, no dependencies.*
@@ -9,7 +9,7 @@
 - 메뉴 막대에서 모니터별로 입력을 고르면 바로 바뀌어요. 지금 입력에는 체크 표시가 붙어요.
 - 처음 켤 때 **모니터에게 입력 번호 목록을 물어서** 메뉴를 만들어요. 모니터에 없는 번호는 나오지 않아요.
 - 입력마다 별칭을 붙일 수 있어요(예: `MacBook Pro`, `Nintendo Switch 2`).
-- 이 맥이 연결된 입력에 「이 맥」 표시를 해요.
+- 현재 디스플레이(이 맥이 연결된 입력)에 표시를 붙여요(◀ ★ 📍 등, 이모지·글자로 바꿀 수 있어요).
 - 메뉴 막대 아이콘을 SF Symbols 중에서 골라 바꿀 수 있어요.
 - 로그인할 때 자동으로 실행할 수 있어요.
 
@@ -19,8 +19,15 @@
 - **DDC/CI를 지원하는 모니터**(대부분의 모니터가 지원해요. 모니터 메뉴에서 DDC/CI가 꺼져 있으면 켜 주세요)
 
 ## 설치
-1. [Releases](../../releases)에서 `DisplayInputSwitch-<버전>.zip`을 받아 풀어요.
-2. `DisplayInputSwitch.app`을 「응용 프로그램」 폴더로 옮겨요.
+### Homebrew
+```sh
+brew install --cask kyungryeol-yoon/tap/diswitch
+```
+업데이트는 `brew upgrade`, 지우기는 `brew uninstall --cask diswitch`.
+
+### 직접 받기
+1. [Releases](../../releases)에서 `DiSwitch-<버전>.zip`을 받아 풀어요.
+2. `DiSwitch.app`을 「응용 프로그램」 폴더로 옮겨요.
 3. 처음 열 때 「확인되지 않은 개발자」 경고가 나오면:
    **시스템 설정 → 개인정보 보호 및 보안** 아래쪽의 **「그래도 열기」**를 눌러요. 한 번만 하면 돼요.
    (애플 개발자 서명과 공증을 하지 않은 앱이라 그래요.)
@@ -43,9 +50,19 @@
 Xcode(또는 Command Line Tools)가 있으면 돼요. 외부 라이브러리는 없어요.
 
 ```sh
-./build.sh            # build/DisplayInputSwitch.app 과 배포용 zip 생성
+./build.sh            # build/DiSwitch.app 과 배포용 zip 생성
 ./build.sh install    # 빌드 후 /Applications 에 복사하고 실행
 ```
+
+## 릴리스(관리자용)
+`v1.2.3` 형식의 태그를 올리면 GitHub Actions가 빌드해서 Release를 만들고 Homebrew tap을 갱신해요.
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+tap 갱신에는 저장소 Secret `TAP_TOKEN`(`homebrew-tap` 저장소에 쓰기 권한이 있는 토큰)이 필요해요.
+
+## 라이선스
+[MIT](LICENSE)
 
 ## 동작 원리
 DDC/CI(모니터 I2C 주소 `0x37`)로 VCP 코드 `0x60`(입력 소스)을 읽고 써요. 입력 번호 목록은 기능 목록(capabilities, 명령 `0xF3`)의 `60(...)` 부분에서 가져와요.

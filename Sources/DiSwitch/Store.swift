@@ -61,6 +61,12 @@ struct MonitorItem: Identifiable {
   var checked: Bool      // 한 번이라도 읽어 봤는지(응답 없는 모니터는 확인에 20초 넘게 걸리기도 함)
 }
 
+/// 메뉴에서 이 맥 입력 옆에 붙는 표시
+enum ThisMacMark {
+  static let fallback = "◀\u{FE0E}"
+  static let candidates = ["◀\u{FE0E}", "★", "⭐️", "📍", "👈", "🖥️", "💻", "🏠", "🟢", "🔵", "💡", "🎯"]
+}
+
 enum MenuIcon {
   static let fallback = "display.2"
   /// 설정창에 보여 줄 후보(rectangle.on.rectangle은 macOS 화면 미러링과 같아서 뺌)
@@ -87,7 +93,8 @@ final class Store: ObservableObject {
   @Published var scanning: Set<String> = []
 
   private var lastRefresh = Date.distantPast
-  private var menuObserver: NSObjectProtocol?
+  private var observers: [NSObjectProtocol] = []
+  private var pendingRefresh: Task<Void, Never>?
 
   init() {
     if let d = UserDefaults.standard.data(forKey: "monitors"), let v = try? JSONDecoder().decode([String: MonitorConfig].self, from: d) {
@@ -96,13 +103,39 @@ final class Store: ObservableObject {
       configs = [:]
     }
     refresh()
-    // 메뉴를 열 때마다 지금 입력을 다시 읽음. 메뉴를 열었다 = 모니터가 이 맥을 보여 주는 중 → 이 맥의 입력 번호로 기억
-    menuObserver = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+    // 메뉴를 열 때마다 지금 입력을 다시 읽음.
+    // 마우스가 있는 화면의 모니터 = 사용자가 지금 보고 있는 화면 = 이 맥을 보여 주는 중 → 그 모니터의 지금 입력을 이 맥 입력으로 기억
+    // (다른 모니터에서 메뉴를 열면 기억하지 않음 — 그 모니터는 다른 기기를 보여 주는 중일 수 있음)
+    observers.append(NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self, Date().timeIntervalSince(self.lastRefresh) > 3 else { return }
-        self.refresh(rememberThisMac: true)
+        self.refresh(menuOpenedOn: Self.displayUnderMouse(), fromMenu: true)
       }
+    })
+    // 모니터를 꽂거나 뺐을 때·화면 배치가 바뀌었을 때, 잠자기에서 깨어났을 때 다시 읽음
+    // (깨어난 직후엔 모니터 연결이 아직 안 잡혔을 수 있어 조금 기다림. 알림이 여러 번 와도 한 번만)
+    observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.refreshSoon(after: 2) }
+    })
+    observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.refreshSoon(after: 3) }
+    })
+  }
+
+  private func refreshSoon(after seconds: Double) {
+    pendingRefresh?.cancel()
+    pendingRefresh = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(seconds))
+      guard !Task.isCancelled else { return }
+      self?.refresh()
     }
+  }
+
+  /// 마우스가 있는 화면의 id
+  private static func displayUnderMouse() -> CGDirectDisplayID? {
+    let p = NSEvent.mouseLocation
+    let screen = NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) }
+    return screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
   }
 
   func config(_ m: MonitorItem) -> MonitorConfig? { configs[m.key] }
@@ -113,12 +146,12 @@ final class Store: ObservableObject {
   func slot(_ m: MonitorItem, code: Int) -> InputSlot? { config(m)?.inputs.first { $0.code == code } }
 
   /// 모니터 목록과 지금 입력을 다시 읽음(메인 스레드 밖에서)
-  /// rememberThisMac: 메뉴를 열 때 부름 — 지금 입력을 이 맥의 입력으로 기억하고, 응답 없던 모니터는 다시 읽지 않음
+  /// menuOpenedOn: 메뉴를 연 화면 — 그 모니터의 지금 입력을 이 맥 입력으로 기억. 메뉴를 열 땐 응답 없던 모니터는 다시 읽지 않음
   /// (응답 없는 모니터는 확인하는 데 20초 넘게 걸리기도 함. 「새로고침」은 전부 다시 읽음)
-  func refresh(rememberThisMac: Bool = false) {
+  func refresh(menuOpenedOn display: CGDirectDisplayID? = nil, fromMenu: Bool = false) {
     lastRefresh = Date()
     let old = Dictionary(monitors.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
-    let skip = rememberThisMac ? Set(monitors.filter { $0.checked && !$0.responds }.map(\.key)) : []
+    let skip = fromMenu ? Set(monitors.filter { $0.checked && !$0.responds }.map(\.key)) : []
     Task.detached {
       let all = DDCMonitor.all().enumerated().map { i, m in (key: m.key.isEmpty ? "\(m.name)#\(i)" : m.key, ddc: m) }
       await MainActor.run {
@@ -133,7 +166,8 @@ final class Store: ObservableObject {
       for m in all where !skip.contains(m.key) {
         Task.detached {
           let cur = m.ddc.read(VCP.input)?.current
-          await MainActor.run { self.update(key: m.key, ddc: m.ddc, current: cur, rememberThisMac: rememberThisMac) }
+          let mine = display.map { m.ddc.matches($0) } ?? false
+          await MainActor.run { self.update(key: m.key, ddc: m.ddc, current: cur, rememberThisMac: mine) }
         }
       }
     }

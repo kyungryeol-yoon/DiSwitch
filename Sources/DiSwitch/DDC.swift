@@ -2,6 +2,7 @@
 // 원리는 CLAUDE.md 「동작 원리」 참고. 시험용 명령줄은 Sources/ddc.swift
 import Foundation
 import IOKit
+import CoreGraphics
 
 // macOS 안에 있지만 공개 안 된 함수들
 @_silgen_name("IOAVServiceCreateWithService")
@@ -23,6 +24,8 @@ final class DDCMonitor: @unchecked Sendable {
   let name: String
   /// 모니터를 구분하는 값(EDID 제조사·모델·일련번호). 같은 모델 두 대도 구분됨
   let key: String
+  /// macOS 화면(NSScreen)과 맞춰 볼 값 — CGDisplayVendorNumber·ModelNumber·SerialNumber와 같음
+  let vendor: UInt32, model: UInt32, serial: UInt32
   private let av: CFTypeRef
   private let lock = NSLock()   // 한 모니터에 명령이 겹치지 않게
 
@@ -34,6 +37,19 @@ final class DDCMonitor: @unchecked Sendable {
     let edid = IOAVServiceCopyEDID(av, &out) == KERN_SUCCESS ? out?.takeRetainedValue() as Data? : nil
     self.name = edid.flatMap(Self.edidName) ?? "알 수 없는 모니터"
     self.key = edid.map { $0.count >= 16 ? $0[8..<16].map { String(format: "%02X", $0) }.joined() : "" } ?? ""
+    if let d = edid, d.count >= 16 {
+      vendor = UInt32(d[8]) << 8 | UInt32(d[9])
+      model = UInt32(d[10]) | UInt32(d[11]) << 8
+      serial = UInt32(d[12]) | UInt32(d[13]) << 8 | UInt32(d[14]) << 16 | UInt32(d[15]) << 24
+    } else {
+      vendor = 0; model = 0; serial = 0
+    }
+  }
+
+  /// 이 모니터가 macOS 화면 id와 같은 모니터인지
+  func matches(_ display: CGDirectDisplayID) -> Bool {
+    vendor != 0 && CGDisplayVendorNumber(display) == vendor && CGDisplayModelNumber(display) == model
+      && (serial == 0 || CGDisplaySerialNumber(display) == 0 || CGDisplaySerialNumber(display) == serial)
   }
 
   /// 연결된 바깥 모니터 전부(DDC 응답 여부와 상관없이)

@@ -15,8 +15,11 @@ struct SettingsView: View {
 // MARK: - 일반
 
 struct GeneralSettings: View {
+  @EnvironmentObject private var store: Store
+  @AppStorage("thisMacMark") private var mark = ThisMacMark.fallback
   @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
   @State private var error: String?
+  @State private var custom = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -25,11 +28,54 @@ struct GeneralSettings: View {
       Text("「시스템 설정 → 일반 → 로그인 항목」에서도 끄고 켤 수 있어요.")
         .font(.caption).foregroundStyle(.secondary)
       if let error { Text(error).foregroundStyle(.red).font(.caption) }
+
+      Divider().padding(.vertical, 8)
+
+      Text("현재 디스플레이 표시").font(.headline)
+      Text("메뉴에서 지금 쓰고 있는 이 맥이 연결된 입력 옆에 붙어요.").foregroundStyle(.secondary)
+      HStack(alignment: .top, spacing: 20) {
+        VStack(alignment: .leading, spacing: 10) {
+          LazyVGrid(columns: Array(repeating: GridItem(.fixed(40), spacing: 8), count: 6), alignment: .leading, spacing: 8) {
+            ForEach(ThisMacMark.candidates, id: \.self) { m in
+              Button { mark = m } label: {
+                Text(m).font(.system(size: 17))
+                  .frame(width: 40, height: 34)
+                  .background(RoundedRectangle(cornerRadius: 7).fill(mark == m ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.08)))
+                  .overlay(RoundedRectangle(cornerRadius: 7).stroke(mark == m ? Color.accentColor : .clear, lineWidth: 2))
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+            }
+          }
+          HStack {
+            TextField("직접 입력(이모지·글자)", text: $custom)
+              .textFieldStyle(.roundedBorder).frame(width: 170)
+              .onSubmit(applyCustom)
+            Button("적용", action: applyCustom).disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
+          }
+          Text("이모지는 ⌃⌘Space로 넣을 수 있어요.").font(.caption).foregroundStyle(.secondary)
+        }
+        MenuPreview(mark: mark, names: previewNames)
+      }
       Spacer()
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
     .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+  }
+
+  /// 미리보기용 입력 이름(연결된 모니터의 실제 별칭, 없으면 예시)
+  private var previewNames: (mine: String, others: [String]) {
+    if let m = store.monitors.first(where: { store.config($0)?.thisMac != nil }), let c = store.config(m), let t = c.thisMac {
+      let vis = c.inputs.filter(\.enabled)
+      return (c.inputs.first { $0.code == t }?.displayName ?? "입력 \(t)", vis.filter { $0.code != t }.map(\.displayName).prefix(2).map { $0 })
+    }
+    return ("Mac mini", ["MacBook Pro", "Game console"])
+  }
+
+  private func applyCustom() {
+    let v = String(custom.trimmingCharacters(in: .whitespaces).prefix(4))
+    if !v.isEmpty { mark = v; custom = "" }
   }
 
   private func setLaunchAtLogin(_ on: Bool) {
@@ -40,6 +86,27 @@ struct GeneralSettings: View {
       self.error = "바꾸지 못함: \(error.localizedDescription)"
     }
     launchAtLogin = SMAppService.mainApp.status == .enabled
+  }
+}
+
+/// 메뉴처럼 보이는 작은 미리보기
+struct MenuPreview: View {
+  let mark: String
+  let names: (mine: String, others: [String])
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("미리보기").font(.caption).foregroundStyle(.secondary)
+      VStack(alignment: .leading, spacing: 5) {
+        HStack(spacing: 6) { Text("✓").frame(width: 12); Text(names.mine + "  " + mark) }
+        ForEach(names.others, id: \.self) { n in HStack(spacing: 6) { Text("").frame(width: 12); Text(n) } }
+      }
+      .font(.system(size: 13))
+      .padding(10)
+      .frame(minWidth: 200, alignment: .leading)
+      .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+      .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
+    }
   }
 }
 
@@ -164,6 +231,7 @@ struct InputSettings: View {
 
 struct InputList: View {
   @EnvironmentObject private var store: Store
+  @AppStorage("thisMacMark") private var mark = ThisMacMark.fallback
   let key: String
 
   private var config: Binding<MonitorConfig> {
@@ -192,7 +260,7 @@ struct InputList: View {
             HStack {
               Toggle("", isOn: $slot.enabled).labelsHidden().frame(width: 36)
               VStack(alignment: .leading, spacing: 0) {
-                Text("\(slot.code)" + (slot.code == c.thisMac ? "  · 이 맥" : "")).monospacedDigit()
+                Text("\(slot.code)" + (slot.code == c.thisMac ? "  \(mark) 현재 디스플레이" : "")).monospacedDigit()
                 Text(InputSlot.standardName(slot.code).map { "표준: \($0)" } ?? "표준에 없는 번호")
                   .font(.caption2).foregroundStyle(.secondary)
               }
@@ -212,7 +280,7 @@ struct InputList: View {
         }
         Spacer()
       }
-      Text("「이 맥」은 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
+      Text("「\(mark) 현재 디스플레이」는 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
   }
