@@ -5,6 +5,10 @@ struct DiSwitchApp: App {
   @StateObject private var store = Store()
   @AppStorage("menuIcon") private var icon = MenuIcon.fallback
 
+  init() {
+    LegacyDefaults.migrate()   // 옛 번들 ID의 설정을 옮김 — Store·@AppStorage가 읽기 전에
+  }
+
   var body: some Scene {
     MenuBarExtra {
       MenuContent().environmentObject(store)

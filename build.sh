@@ -23,7 +23,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleExecutable</key><string>DiSwitch</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleIdentifier</key><string>app.displayinputswitch</string>
+  <key>CFBundleIdentifier</key><string>io.github.kyungryeol-yoon.diswitch</string>
   <key>CFBundleName</key><string>DiSwitch</string>
   <key>CFBundleDisplayName</key><string>DiSwitch</string>
   <key>CFBundlePackageType</key><string>APPL</string>

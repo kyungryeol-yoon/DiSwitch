@@ -1,6 +1,6 @@
 # DiSwitch
 
-> 이름: **DiSwitch** = **Di**splay **I**nput **Switch**(2026-11-20, 「DisplayInputSwitch」가 앱 목록에서 잘려서 바꿈). 저장소·zip·cask·앱 이름 모두 DiSwitch. **번들 ID만 `app.displayinputswitch` 그대로**(바꾸면 저장된 설정이 사라짐). 로컬 폴더도 `macos/DiSwitch`(2026-11-20 옮김)
+> 이름: **DiSwitch** = **Di**splay **I**nput **Switch**(2026-11-20, 「DisplayInputSwitch」가 앱 목록에서 잘려서 바꿈). 저장소·zip·cask·앱 이름 모두 DiSwitch. **번들 ID `io.github.kyungryeol-yoon.diswitch`**(2026-11-21 `app.displayinputswitch`에서 바꿈 — 개인 앱 공통 규칙 `io.github.kyungryeol-yoon.<앱>`, Hum·MacInv와 같음. 옛 설정은 `LegacyDefaults.migrate()`가 첫 실행 때 옮기고 지움 — 이 코드는 옛 버전 사용자가 남아 있는 동안 지우지 말 것). 로컬 폴더도 `macos/DiSwitch`(2026-11-20 옮김)
 
 맥에서 클릭 한 번(메뉴 막대·단축키)으로 바깥 모니터의 **입력 소스**를 바꾸는 앱. GitHub에 **범용**으로 공개(2026-11-19 시작) — 특정 사용자 환경에 맞춘 기본값·코드를 넣지 말 것
 - git main → GitHub `origin`(공개 저장소). **커밋·푸시는 사용자가 요청할 때만**. 커밋 작성자 이메일은 개인 메일 그대로 공개해도 됨(사용자 결정)
@@ -36,6 +36,7 @@
   - 다시 읽는 때: 켤 때 · 메뉴 열 때 · 전환 4초 뒤 · 모니터 꽂기/빼기·화면 배치 변경(2초 뒤) · 잠자기에서 깨어남(3초 뒤)
   - 모니터마다 따로·동시에 읽음(응답 없는 모니터가 24초 걸려도 다른 모니터는 바로). 메뉴를 열 때는 응답 없던 모니터를 건너뜀, 「새로고침」은 전부
   - 설정 「일반」 탭: 로그인할 때 자동 실행(SMAppService)
+  - `LegacyDefaults.swift`: 옛 번들 ID(`app.displayinputswitch`)의 UserDefaults를 새 ID로 옮김(`DiSwitchApp.init()`에서, Store·@AppStorage보다 먼저). 새 쪽에 이미 있는 키는 안 덮어씀. cask `zap`은 옛 plist도 지움
   - 현재 디스플레이 표시(= thisMac 입력, UserDefaults `thisMacMark`, 기본 ◀︎ 흑백): 설정 「일반」 탭에서 후보·직접 입력, 메뉴 미리보기
   - 메뉴 막대 아이콘은 설정창에서 SF Symbols 후보를 고르거나 이름을 넣어 바꿈. 기본 `display.2`(`rectangle.on.rectangle`은 화면 미러링과 같아서 후보에서 뺌)
 - 빌드: `./build.sh` → `build/DiSwitch.app` + `build/DiSwitch-<버전>.zip`(+ sha256 출력) · `./build.sh install` → /Applications에 복사·재실행
@@ -58,6 +59,9 @@
 - [ ] 설정 「일반」 탭에서 로그인 자동 실행이 brew로 깐 앱에서도 켜지는지 확인(앱 위치가 바뀐 뒤라 다시 켜야 할 수 있음)
 - [ ] 맥북에서 시험: 덮개 닫고 입력 넘겼다 돌아올 때 잠드는지(`pmset -g log | grep -E " Sleep | Wake "`) — 맥북 설정(잠금 화면·배터리 옵션)은 안내함
 - [ ] 메뉴에서 BenQ 화면으로 메뉴 열기 시험: ✓는 필립스가 보여 주는 입력, 현재 디스플레이 표시는 맥 미니(18) 그대로인지
+
+- [ ] **번들 ID 변경(2026-11-21) 실기 확인** — 다음 태그로 brew 업그레이드한 뒤: ① 모니터 별칭·현재 디스플레이 표시·아이콘이 그대로인지(옮기기 성공) ② `~/Library/Preferences/app.displayinputswitch.plist`가 비었는지 ③ 로그인 자동 실행: 옛 ID로 등록된 항목은 새 앱과 별개라 **설정에서 다시 켜야 할 수 있음**, 시스템 설정 → 일반 → 로그인 항목에 옛 항목이 남는지도 확인 ④ 릴리스 설명에 「자동 실행을 쓰셨다면 다시 켜 주세요」 한 줄(이번 릴리스만)
+  - homebrew-tap의 `Casks/diswitch.rb`는 아직 옛 ID(`uninstall quit`·`zap`) — 다음 태그 때 Actions가 `packaging/diswitch.rb`로 덮어씀
 
 ## 할 일(계획)
 1. 전역 단축키

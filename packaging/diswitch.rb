@@ -20,7 +20,10 @@ cask "diswitch" do
         writable_paths: ["{{appdir}}/DiSwitch.app"]
   end
 
-  uninstall quit: "app.displayinputswitch"
+  uninstall quit: "io.github.kyungryeol-yoon.diswitch"
 
-  zap trash: "~/Library/Preferences/app.displayinputswitch.plist"
+  zap trash: [
+    "~/Library/Preferences/io.github.kyungryeol-yoon.diswitch.plist",
+    "~/Library/Preferences/app.displayinputswitch.plist", # 2026-11-21 이전 번들 ID
+  ]
 end
