@@ -5,7 +5,7 @@
 - GitHub `kyungryeol-yoon/DiSwitch`(공개) — **범용**으로: 특정 사용자 환경에 맞춘 기본값·코드 금지. **커밋·푸시는 요청할 때만**. 커밋 작성자 이메일은 공개해도 됨(사용자 결정)
 - Swift + SwiftPM + IOKit, 외부 라이브러리 없음, 애플 실리콘만(인텔은 방식이 달라 나중에), macOS 15+, Swift 5 언어 모드
 - 번들 ID `io.github.kyungryeol-yoon.diswitch`(개인 앱 공통 규칙 `io.github.kyungryeol-yoon.<앱>`). v0.1.1에서 `app.displayinputswitch`에서 바꿈 — `LegacyDefaults.migrate()`가 첫 실행 때 옛 설정을 옮김. **옛 버전 사용자가 남아 있는 동안 지우지 말 것**
-- 사용자용 설명은 `README.md`, 개발 메모는 이 파일. 설명은 한국어
+- 사용자용 설명은 `README.md`, 개발 메모는 이 파일. 설명은 한국어. 앱 화면·README에서는 「맥」 대신 **Mac**(MacBook·Mac mini)
 
 ## 동작 원리
 - DDC/CI: I2C 주소 0x37, 서브주소 0x51. 체크섬 = 0x6E ^ 0x51 ^ 보낸 바이트 전부
@@ -34,7 +34,8 @@
 - **깨워 두기**(메뉴의 스위치 — 자주 켜고 꺼서 설정창이 아니라 메뉴에. 체크 = 기능 켬, 밑 줄 = 지금 상태(「깨워 두는 중」/「대기 중」) — 둘을 한 줄로 합치면 헷갈려 함. UserDefaults `keepAwake`, 기본 꺼짐): `thisMac`을 아는 모니터가 다른 입력을 보여 주면 power assertion(`PreventUserIdleDisplaySleep`·`PreventSystemSleep`)으로 잠들기를 막음. 권한·배터리 경고 없음. 켜져 있으면 20초마다 그 모니터의 입력을 읽음(다른 맥에서 바꾼 걸 알려고). 이 맥으로 돌아오면 풀고 `IOPMAssertionDeclareUserActivity`(풀자마자 화면이 꺼지지 않게). 모니터를 빼면 목록이 비어 저절로 풂. 덮개 닫은 맥북에서 통함 확인(v0.1.5)
   - 한계: 화면 신호를 계속 내보내는 방식이라 모니터의 **입력 자동 전환**과 겹침 — 다른 기기의 화면이 꺼지면(신호 끊김) 모니터가 절전 대신 이 맥으로 넘어옴. 그래서 늘 켜 두는 맥에선 끄고, 모니터 자동 전환을 끄는 걸 README에 안내. 화면 끄기는 막지 않고 시스템 잠들기만 막으면 이 문제는 없지만 돌아올 때 「신호 없음」이 다시 생김(맞바꿈)
 - 현재 디스플레이 표시(UserDefaults `thisMacMark`, 기본 ◀︎) · 메뉴 막대 아이콘은 SF Symbols에서 고름(기본 `display.2`, `rectangle.on.rectangle`은 미러링과 같아 뺌)
-- 설정창: Hum·MacInv와 같은 모양(`Form` + `.formStyle(.grouped)`, 설명은 Section footer, 맨 아래 버전·GitHub). 입력 탭은 한 줄에 체크박스·번호(+표시)·포트·별칭 — 스크롤 적게. 창 600×540
+- 설정창: Hum·MacInv와 같은 카드(둥근 10, 옅은 바탕, 얇은 테두리). 일반 = 로그인·버전 카드 나란히 + 표시 카드(고르기 왼쪽·미리보기 오른쪽). 아이콘 = `Form` grouped. 입력 = 모니터 이름 옆에 「다시 읽기」, 한 줄에 체크박스·번호(+표시)·포트·별칭 — 스크롤 없이. 창 600×540
+- 메뉴 막대 아이콘: 기본 13pt는 다른 앱보다 작아 보여 `MenuIcon.image`로 높이 16·폭 최대 24pt에 맞춘 템플릿 NSImage
 - 다시 읽는 때: 켤 때 · 메뉴 열 때 · 전환 4초 뒤 · 모니터 꽂기/빼기·배치 변경(2초 뒤) · 깨어남(3초 뒤). 모니터마다 따로·동시에 읽음(응답 없는 모니터가 다른 모니터를 막지 않음). 메뉴를 열 때는 응답 없던 모니터를 건너뜀, 「새로고침」은 전부
 - 앱 아이콘: 어두운 바탕 + 모니터 두 대(뒤 주황·앞 파랑) + ⇄ 배지 — `packaging/make-icon.swift`
 

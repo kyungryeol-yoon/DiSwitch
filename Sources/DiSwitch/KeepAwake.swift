@@ -30,6 +30,6 @@ final class KeepAwake {
   /// 키보드를 누른 것처럼 사용자 활동을 알림 — 화면이 꺼져 있으면 켜고, 잠들기 시간을 처음부터 다시 셈
   /// (막아 둔 걸 풀자마자 오래 안 쓴 것으로 쳐서 바로 화면이 꺼지지 않게)
   func declareActivity() {
-    IOPMAssertionDeclareUserActivity("DiSwitch: 모니터가 이 맥으로 돌아옴" as CFString, kIOPMUserActiveLocal, &activityID)
+    IOPMAssertionDeclareUserActivity("DiSwitch: 모니터가 이 Mac으로 돌아옴" as CFString, kIOPMUserActiveLocal, &activityID)
   }
 }

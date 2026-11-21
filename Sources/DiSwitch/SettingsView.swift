@@ -18,6 +18,22 @@ private func footnote(_ s: String) -> some View {
   Text(s).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 }
 
+/// 카드 — Hum·MacInv와 같은 값(둥근 10, 옅은 바탕, 얇은 테두리)
+private struct Card<Content: View>: View {
+  var title: String?
+  @ViewBuilder let content: () -> Content
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if let title { Text(title).font(.headline) }
+      content()
+    }
+    .padding(.horizontal, 14).padding(.vertical, 12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+  }
+}
+
 /// 고를 수 있는 칸(아이콘·표시 후보) — 고른 것은 강조색 테두리
 private struct ChoiceTile<Label: View>: View {
   let selected: Bool
@@ -51,48 +67,54 @@ struct GeneralSettings: View {
   private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "개발판" }
 
   var body: some View {
-    Form {
-      Section {
-        // 사용자가 눌렀을 때만 등록·해제(상태를 다시 읽어 넣을 때 또 불리지 않게 onChange 대신 Binding의 set에서)
-        Toggle("로그인할 때 자동으로 실행", isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) }))
-      } footer: {
-        loginFooter
+    // 카드를 왼쪽·오른쪽으로 놓아 빈 곳을 줄임
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .top, spacing: 12) {
+        Card {
+          HStack {
+            Text("로그인할 때 자동으로 실행")
+            Spacer()
+            // 사용자가 눌렀을 때만 등록·해제(상태를 다시 읽어 넣을 때 또 불리지 않게 onChange 대신 Binding의 set에서)
+            Toggle("", isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) }))
+              .toggleStyle(.switch).labelsHidden()
+          }
+          loginFooter
+        }
+        Card {
+          Text("DiSwitch \(version)")
+          Link("GitHub", destination: URL(string: "https://github.com/kyungryeol-yoon/DiSwitch")!).font(.callout)
+        }
+        .frame(width: 150)
       }
+      .fixedSize(horizontal: false, vertical: true)
 
-      Section {
-        LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 8), count: 6), alignment: .leading, spacing: 8) {
-          ForEach(ThisMacMark.candidates, id: \.self) { m in
-            ChoiceTile(selected: mark == m, width: 44, height: 34, action: { mark = m }) {
-              Text(m).font(.system(size: 17))
+      Card(title: "현재 디스플레이 표시") {
+        HStack(alignment: .top, spacing: 16) {
+          VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 8), count: 6), alignment: .leading, spacing: 8) {
+              ForEach(ThisMacMark.candidates, id: \.self) { m in
+                ChoiceTile(selected: mark == m, width: 44, height: 34, action: { mark = m }) {
+                  Text(m).font(.system(size: 17))
+                }
+              }
+            }
+            HStack {
+              TextField("직접 입력", text: $custom, prompt: Text("직접 입력(이모지·글자)"))
+                .textFieldStyle(.roundedBorder).frame(width: 190)
+                .onSubmit(applyCustom)
+              Button("적용", action: applyCustom).disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
             }
           }
+          VStack(alignment: .leading, spacing: 6) {
+            Text("미리보기").font(.caption).foregroundStyle(.secondary)
+            MenuPreview(mark: mark, names: previewNames)
+          }
         }
-        .padding(.vertical, 4)
-        HStack {
-          TextField("직접 입력", text: $custom, prompt: Text("이모지·글자"))
-            .onSubmit(applyCustom)
-          Button("적용", action: applyCustom).disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        HStack(alignment: .top) {
-          Text("미리보기").foregroundStyle(.secondary)
-          Spacer()
-          MenuPreview(mark: mark, names: previewNames)
-        }
-      } header: {
-        Text("현재 디스플레이 표시")
-      } footer: {
-        footnote("메뉴에서 이 맥이 연결된 입력 옆에 붙어요. 이모지는 ⌃⌘Space로 넣을 수 있어요.")
+        footnote("메뉴에서 이 Mac이 연결된 입력 옆에 붙어요. 이모지는 ⌃⌘Space로 넣을 수 있어요.")
       }
-
-      Section {
-        HStack {
-          Text("DiSwitch \(version)")
-          Spacer()
-          Link("GitHub", destination: URL(string: "https://github.com/kyungryeol-yoon/DiSwitch")!)
-        }
-      }
+      Spacer(minLength: 0)
     }
-    .formStyle(.grouped)
+    .padding(20)
     .onAppear(perform: readLaunchAtLogin)
     // 시스템 설정에서 로그인 항목을 바꿨을 수 있으니 창이 앞으로 올 때마다 다시 읽음
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in readLaunchAtLogin() }
@@ -107,7 +129,7 @@ struct GeneralSettings: View {
         Button("열기") { SMAppService.openSystemSettingsLoginItems() }.buttonStyle(.link).font(.caption)
       }
     } else {
-      footnote("시스템 설정 → 일반 → 로그인 항목에서도 끄고 켤 수 있어요.")
+      footnote("시스템 설정 → 일반 → 로그인 항목에서도 바꿀 수 있어요.")
     }
   }
 
@@ -155,7 +177,7 @@ struct MenuPreview: View {
     }
     .font(.system(size: 13))
     .padding(.horizontal, 12).padding(.vertical, 8)
-    .frame(minWidth: 200, alignment: .leading)
+    .frame(minWidth: 170, alignment: .leading)
     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08)))
   }
@@ -230,13 +252,13 @@ struct MenuBarPreview: View {
   var body: some View {
     HStack(spacing: 14) {
       Image(systemName: "wifi")
-      Image(systemName: MenuIcon.exists(symbol) ? symbol : MenuIcon.fallback)
+      Image(nsImage: MenuIcon.image(symbol))   // 메뉴 막대에 실제로 올라가는 그림과 같은 크기
       Image(systemName: "magnifyingglass")
     }
-    .font(.system(size: 13))
+    .font(.system(size: 15))
     .foregroundStyle(dark ? .white : .black)
     .padding(.horizontal, 12)
-    .frame(height: 24)
+    .frame(height: 28)
     .background(RoundedRectangle(cornerRadius: 6).fill(dark ? Color(white: 0.15) : Color(white: 0.93)))
     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
   }
@@ -255,29 +277,44 @@ struct InputSettings: View {
   }
 
   var body: some View {
-    Form {
-      if keys.isEmpty {
-        Section {
-          Text(store.scanning.isEmpty ? "DDC로 제어할 수 있는 모니터가 없어요." : "모니터에서 입력 번호를 읽는 중…")
-            .foregroundStyle(.secondary)
-        }
-      } else {
-        let key = selected.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
-        Section {
-          if keys.count > 1 {
-            Picker("모니터", selection: Binding(get: { key }, set: { selected = $0 })) {
-              ForEach(keys, id: \.self) { k in
-                Text(store.configs[k]?.name ?? k) + Text(store.monitors.contains { $0.key == k } ? "" : " (연결 안 됨)")
+    // 입력이 많은 모니터만 스크롤되게(보통은 한 화면에 다 들어옴)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 12) {
+        if keys.isEmpty {
+          Card {
+            Text(store.scanning.isEmpty ? "DDC로 제어할 수 있는 모니터가 없어요." : "모니터에서 입력 번호를 읽는 중…")
+              .foregroundStyle(.secondary)
+          }
+        } else {
+          let key = selected.flatMap { keys.contains($0) ? $0 : nil } ?? keys[0]
+          // 모니터 이름 옆에 「다시 읽기」(빈 곳 활용)
+          Card {
+            HStack {
+              if keys.count > 1 {
+                Picker("모니터", selection: Binding(get: { key }, set: { selected = $0 })) {
+                  ForEach(keys, id: \.self) { k in
+                    Text(store.configs[k]?.name ?? k) + Text(store.monitors.contains { $0.key == k } ? "" : " (연결 안 됨)")
+                  }
+                }
+                .frame(maxWidth: 300)
+              } else {
+                Text("모니터").foregroundStyle(.secondary)
+                Text(store.configs[key]?.name ?? key).font(.headline)
+              }
+              Spacer()
+              if let m = store.monitors.first(where: { $0.key == key }) {
+                Button(store.scanning.contains(key) ? "읽는 중…" : "모니터에서 번호 다시 읽기") {
+                  store.scanInputs(key: key, ddc: m.ddc, current: m.current)
+                }
+                .disabled(store.scanning.contains(key))
               }
             }
-          } else {
-            LabeledContent("모니터", value: store.configs[key]?.name ?? key)
           }
+          InputList(key: key)
         }
-        InputList(key: key)
       }
+      .padding(20)
     }
-    .formStyle(.grouped)
   }
 }
 
@@ -293,60 +330,56 @@ struct InputList: View {
 
   var body: some View {
     let c = config.wrappedValue
-    Section {
-      // 한 줄에 하나(체크 · 번호 · 포트 · 별칭) — 입력이 많아도 스크롤이 적게
-      ForEach(config.inputs) { $slot in
-        HStack(spacing: 10) {
-          Toggle("", isOn: $slot.enabled).toggleStyle(.checkbox).labelsHidden().frame(width: 36)
-          HStack(spacing: 4) {
-            Text("\(slot.code)").monospacedDigit()
-            if slot.code == c.thisMac { Text(mark).help("현재 디스플레이(이 맥이 연결된 입력)") }
+    VStack(alignment: .leading, spacing: 8) {
+      Card {
+        VStack(spacing: 0) {
+          HStack(spacing: 10) {
+            Text("메뉴").frame(width: 36)
+            Text("번호").frame(width: 56, alignment: .leading)
+            Text("포트").frame(width: 150, alignment: .leading)
+            Text("별칭")
+            Spacer()
           }
-          .frame(width: 56, alignment: .leading)
-          // 포트 종류는 모니터가 알려 주지 않으니 사용자가 고름(표준표와 다른 모니터가 있어서)
-          Menu {
-            ForEach(InputSlot.portChoices, id: \.self) { p in
-              Button { slot.port = p } label: {
-                if slot.port == p { Label(p, systemImage: "checkmark") } else { Text(p) }
-              }
-            }
+          .font(.caption).foregroundStyle(.secondary)
+          .padding(.bottom, 6)
+          // 한 줄에 하나(체크 · 번호 · 포트 · 별칭)
+          ForEach(config.inputs) { $slot in
             Divider()
-            Button(InputSlot.standardName(slot.code).map { "표준대로(\($0))" } ?? "모름") { slot.port = nil }
-          } label: {
-            Text(slot.portLabel).font(.callout)
+            HStack(spacing: 10) {
+              Toggle("", isOn: $slot.enabled).toggleStyle(.checkbox).labelsHidden().frame(width: 36)
+              HStack(spacing: 4) {
+                Text("\(slot.code)").monospacedDigit()
+                if slot.code == c.thisMac { Text(mark).help("현재 디스플레이(이 Mac이 연결된 입력)") }
+              }
+              .frame(width: 56, alignment: .leading)
+              // 포트 종류는 모니터가 알려 주지 않으니 사용자가 고름(표준표와 다른 모니터가 있어서)
+              Menu {
+                ForEach(InputSlot.portChoices, id: \.self) { p in
+                  Button { slot.port = p } label: {
+                    if slot.port == p { Label(p, systemImage: "checkmark") } else { Text(p) }
+                  }
+                }
+                Divider()
+                Button(InputSlot.standardName(slot.code).map { "표준대로(\($0))" } ?? "모름") { slot.port = nil }
+              } label: {
+                Text(slot.portLabel).font(.callout)
+              }
+              .menuStyle(.borderlessButton).fixedSize()
+              .foregroundStyle(slot.port == nil ? .secondary : .primary)
+              .frame(width: 150, alignment: .leading)
+              .help("이 번호가 어느 포트인지 고르세요")
+              TextField("별칭", text: $slot.name, prompt: Text("입력 \(slot.code)"))
+                .textFieldStyle(.plain).labelsHidden()
+            }
+            .padding(.vertical, 5)
           }
-          .menuStyle(.borderlessButton).fixedSize()
-          .foregroundStyle(slot.port == nil ? .secondary : .primary)
-          .frame(width: 150, alignment: .leading)
-          .help("이 번호가 어느 포트인지 고르세요")
-          TextField("별칭", text: $slot.name, prompt: Text("입력 \(slot.code)")).labelsHidden()
         }
       }
-    } header: {
-      HStack(spacing: 10) {
-        Text("메뉴").frame(width: 36)
-        Text("번호").frame(width: 56, alignment: .leading)
-        Text("포트").frame(width: 150, alignment: .leading)
-        Text("별칭")
-      }
-    } footer: {
-      footnote(c.fromMonitor
-               ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요. 포트를 눌러 종류를 고를 수 있어요."
-               : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.")
-    }
-
-    Section {
-      HStack {
-        if let m = store.monitors.first(where: { $0.key == key }) {
-          Button(store.scanning.contains(key) ? "읽는 중…" : "모니터에서 번호 다시 읽기") {
-            store.scanInputs(key: key, ddc: m.ddc, current: m.current)
-          }
-          .disabled(store.scanning.contains(key))
-        }
-        Spacer()
-      }
-    } footer: {
-      footnote("번호 옆 \(mark)는 현재 디스플레이 — 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
+      footnote((c.fromMonitor
+                ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요."
+                : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.")
+               + " 포트를 눌러 종류를 고를 수 있어요. 번호 옆 \(mark)는 현재 디스플레이(이 Mac이 연결된 입력)예요. 표준 이름은 참고용이에요.")
+        .padding(.horizontal, 4)
     }
   }
 }

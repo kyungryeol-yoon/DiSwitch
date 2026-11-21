@@ -90,6 +90,18 @@ enum MenuIcon {
     "square.on.square", "rectangle.on.rectangle.angled", "rectangle.split.2x1", "tv",
     "inset.filled.tv", "laptopcomputer.and.arrow.down", "macmini", "gamecontroller",
   ]
+  /// 메뉴 막대에 올릴 그림. 기본 크기(13pt)로는 다른 앱 아이콘보다 작아 보여서 키우고,
+  /// 기호마다 그림 비율이 달라 높이 16pt·폭 최대 24pt 안에 맞춤. 템플릿이라 밝은/어두운 막대에 맞게 색이 바뀜
+  static func image(_ name: String) -> NSImage {
+    let n = exists(name) ? name : fallback
+    let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+    guard let img = NSImage(systemSymbolName: n, accessibilityDescription: "DiSwitch")?.withSymbolConfiguration(cfg) else { return NSImage() }
+    let s = min(16 / img.size.height, 24 / img.size.width)
+    img.size = NSSize(width: (img.size.width * s).rounded(), height: (img.size.height * s).rounded())
+    img.isTemplate = true
+    return img
+  }
+
   static func exists(_ name: String) -> Bool {
     !name.isEmpty && NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
   }
