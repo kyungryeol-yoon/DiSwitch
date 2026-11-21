@@ -22,8 +22,14 @@ cask "diswitch" do
 
   uninstall quit: "io.github.kyungryeol-yoon.diswitch"
 
-  zap trash: [
-    "~/Library/Preferences/io.github.kyungryeol-yoon.diswitch.plist",
-    "~/Library/Preferences/app.displayinputswitch.plist", # 2026-11-21 이전 번들 ID
-  ]
+  # plist만 휴지통에 버리면 cfprefsd가 메모리에 들고 있던 옛 설정을 다시 설치한 앱이 그대로 읽음 → defaults로 먼저 지움
+  zap script: {
+        executable:   "/usr/bin/defaults",
+        args:         ["delete", "io.github.kyungryeol-yoon.diswitch"],
+        must_succeed: false,
+      },
+      trash:  [
+        "~/Library/Preferences/io.github.kyungryeol-yoon.diswitch.plist",
+        "~/Library/Preferences/app.displayinputswitch.plist", # 2026-11-21 이전 번들 ID
+      ]
 end

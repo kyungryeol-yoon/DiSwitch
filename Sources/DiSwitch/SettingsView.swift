@@ -275,8 +275,21 @@ struct InputList: View {
               Toggle("", isOn: $slot.enabled).labelsHidden().frame(width: 36)
               VStack(alignment: .leading, spacing: 0) {
                 Text("\(slot.code)" + (slot.code == c.thisMac ? "  \(mark) 현재 디스플레이" : "")).monospacedDigit()
-                Text(InputSlot.standardName(slot.code).map { "표준: \($0)" } ?? "표준에 없는 번호")
-                  .font(.caption2).foregroundStyle(.secondary)
+                // 포트 종류는 모니터가 알려 주지 않으니 사용자가 고름(표준표와 다른 모니터가 있어서)
+                Menu {
+                  ForEach(InputSlot.portChoices, id: \.self) { p in
+                    Button { slot.port = p } label: {
+                      if slot.port == p { Label(p, systemImage: "checkmark") } else { Text(p) }
+                    }
+                  }
+                  Divider()
+                  Button(InputSlot.standardName(slot.code).map { "표준대로(\($0))" } ?? "모름") { slot.port = nil }
+                } label: {
+                  Text(slot.portLabel).font(.caption2)
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .foregroundStyle(slot.port == nil ? .secondary : .primary)
+                .help("이 번호가 어느 포트인지 고르세요")
               }
               .frame(width: 120, alignment: .leading)
               TextField("입력 \(slot.code)", text: $slot.name).textFieldStyle(.roundedBorder)
@@ -294,7 +307,7 @@ struct InputList: View {
         }
         Spacer()
       }
-      Text("「\(mark) 현재 디스플레이」는 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
+      Text("「\(mark) 현재 디스플레이」는 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요. 번호 밑을 눌러 포트 종류를 고를 수 있어요.")
         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
   }

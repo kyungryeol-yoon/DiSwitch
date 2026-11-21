@@ -7,8 +7,20 @@ struct InputSlot: Codable, Identifiable, Hashable {
   var name = ""
   var code: Int
   var enabled = true
+  /// 사용자가 고른 포트 종류(예 USB-C). nil이면 표준표 이름을 참고로 보여 줌.
+  /// 옵셔널이라 이 칸이 없던 옛 설정도 그대로 읽힘
+  var port: String?
 
   var displayName: String { name.isEmpty ? "입력 \(code)" : name }
+
+  /// 설정창 번호 밑에 보일 포트 설명
+  var portLabel: String {
+    if let port { return port }
+    return Self.standardName(code).map { "표준: \($0)" } ?? "포트 모름"
+  }
+
+  /// 포트 종류로 고를 수 있는 것
+  static let portChoices = ["USB-C", "Thunderbolt", "HDMI 1", "HDMI 2", "HDMI 3", "DisplayPort 1", "DisplayPort 2", "DVI", "VGA"]
 
   /// MCCS 표준표의 이름. 모니터마다 다를 수 있어서(필립스 32M2N8900은 USB-C가 표준표에 없는 0x15 = 21) 참고로만 보여 줌
   static func standardName(_ code: Int) -> String? {
@@ -96,6 +108,8 @@ final class Store: ObservableObject {
   private var lastRefresh = Date.distantPast
   private var observers: [NSObjectProtocol] = []
   private var pendingRefresh: Task<Void, Never>?
+  /// 입력 목록을 아직 읽는 중인 모니터에서 메뉴를 열었을 때, 목록이 생기면 넣을 이 맥 입력
+  private var pendingThisMac: [String: Int] = [:]
 
   init() {
     if let d = UserDefaults.standard.data(forKey: "monitors"), let v = try? JSONDecoder().decode([String: MonitorConfig].self, from: d) {
@@ -109,8 +123,15 @@ final class Store: ObservableObject {
     // (다른 모니터에서 메뉴를 열면 기억하지 않음 — 그 모니터는 다른 기기를 보여 주는 중일 수 있음)
     observers.append(NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, Date().timeIntervalSince(self.lastRefresh) > 3 else { return }
-        self.refresh(menuOpenedOn: Self.displayUnderMouse(), fromMenu: true)
+        guard let self else { return }
+        let display = Self.displayUnderMouse()
+        if Date().timeIntervalSince(self.lastRefresh) > 3 {
+          self.refresh(menuOpenedOn: display, fromMenu: true)
+        } else if let display {
+          // 방금 읽었으면 다시 읽지 않고 그 값으로 기억(켜자마자 메뉴를 열면 표시가 안 붙던 문제)
+          let mine = self.monitors.filter { $0.ddc.matches(display) }
+          if mine.count == 1, let cur = mine[0].current { self.rememberThisMac(key: mine[0].key, current: cur) }
+        }
       }
     })
     // 모니터를 꽂거나 뺐을 때·화면 배치가 바뀌었을 때, 잠자기에서 깨어났을 때 다시 읽음
@@ -193,7 +214,14 @@ final class Store: ObservableObject {
     monitors[i].checked = true
     guard let current else { return }
     if configs[key] == nil { scanInputs(key: key, ddc: ddc, current: current) }
-    if rememberThisMac, configs[key] != nil, configs[key]?.thisMac != current { configs[key]?.thisMac = current }
+    if rememberThisMac { self.rememberThisMac(key: key, current: current) }
+  }
+
+  /// 이 맥 입력을 기억. 처음 보는 모니터라 입력 목록을 아직 읽는 중이면 목록이 생길 때 넣음
+  /// (안 그러면 처음 메뉴를 열었을 때 기억을 못 해서 한 번 더 열어야 표시가 붙었음)
+  private func rememberThisMac(key: String, current: Int) {
+    if configs[key] == nil { pendingThisMac[key] = current }
+    else if configs[key]?.thisMac != current { configs[key]?.thisMac = current }
   }
 
   /// 모니터에게 입력 번호 목록을 물어서 입력 목록을 (다시) 만듦. 이미 붙인 별칭은 번호가 같으면 유지
@@ -207,7 +235,7 @@ final class Store: ObservableObject {
         var new = MonitorConfig.make(name: ddc.name, codes: codes, current: current)
         // 이미 붙인 별칭과 보임 여부는 유지(0.1의 모니터 공통 목록 "inputs"도 처음 한 번 옮겨 옴)
         let prev = self.configs[key]?.inputs ?? Self.takeLegacyInputs()
-        new.thisMac = self.configs[key]?.thisMac
+        new.thisMac = self.pendingThisMac.removeValue(forKey: key) ?? self.configs[key]?.thisMac
         new.inputs = new.inputs.map { s in prev.first { $0.code == s.code } ?? s }
         self.configs[key] = new
         self.scanning.remove(key)
