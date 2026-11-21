@@ -56,14 +56,14 @@ struct MenuContent: View {
     Divider()
     // 자주 켜고 끄는 거라 설정창 대신 메뉴에 둠. 이 맥 입력(표시)을 알아야 동작
     // 체크는 「자동으로 깨워 두기」를 켠 것. 실제로 막는지는 밑 줄에 따로 보여 줌(체크와 헷갈리지 않게)
-    Toggle("다른 기기로 넘긴 동안 이 맥 깨워 두기", isOn: $store.keepAwake)
+    Toggle("다른 기기 볼 때 이 맥 깨워 두기", isOn: $store.keepAwake)
     if store.keepAwake {
       if store.keepingAwake {
-        Text("지금: 깨워 두는 중")
+        Text("깨워 두는 중")
       } else if !store.monitors.contains(where: { store.config($0)?.thisMac != nil }) {
-        Text("지금: 이 맥 입력을 몰라요 — 이 맥 화면에서 메뉴를 열어 주세요")
+        Text("이 맥 입력을 몰라요 — 이 맥 화면에서 메뉴를 열어 주세요")
       } else {
-        Text("지금: 평소대로 (잠들 수 있음)")
+        Text("대기 중 — 이 맥을 보고 있어요")
       }
     }
     Divider()

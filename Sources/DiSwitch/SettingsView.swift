@@ -10,7 +10,7 @@ struct SettingsView: View {
       IconSettings().tabItem { Label("아이콘", systemImage: "paintbrush") }
       InputSettings().tabItem { Label("입력", systemImage: "list.bullet") }
     }
-    .frame(width: 520, height: 520)
+    .frame(width: 600, height: 540)
   }
 }
 
@@ -180,10 +180,11 @@ struct IconSettings: View {
       }
 
       Section {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 50), spacing: 8)], alignment: .leading, spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 8)], alignment: .leading, spacing: 8) {
           ForEach(MenuIcon.candidates, id: \.self) { name in
-            ChoiceTile(selected: icon == name, width: 50, height: 40, action: { icon = name }) {
-              Image(systemName: name).font(.system(size: 17))
+            // 기호마다 그림 크기가 달라 작은 것(네모 안 화살표 등)도 잘 보이게 칸을 꽉 채우는 크기로
+            ChoiceTile(selected: icon == name, width: 58, height: 48, action: { icon = name }) {
+              Image(systemName: name).font(.system(size: 22)).imageScale(.large)
             }
             .help(name)
           }
@@ -293,40 +294,44 @@ struct InputList: View {
   var body: some View {
     let c = config.wrappedValue
     Section {
+      // 한 줄에 하나(체크 · 번호 · 포트 · 별칭) — 입력이 많아도 스크롤이 적게
       ForEach(config.inputs) { $slot in
-        HStack {
-          Toggle("", isOn: $slot.enabled).labelsHidden().frame(width: 36)
-          VStack(alignment: .leading, spacing: 0) {
-            Text("\(slot.code)" + (slot.code == c.thisMac ? "  \(mark) 현재 디스플레이" : "")).monospacedDigit()
-            // 포트 종류는 모니터가 알려 주지 않으니 사용자가 고름(표준표와 다른 모니터가 있어서)
-            Menu {
-              ForEach(InputSlot.portChoices, id: \.self) { p in
-                Button { slot.port = p } label: {
-                  if slot.port == p { Label(p, systemImage: "checkmark") } else { Text(p) }
-                }
-              }
-              Divider()
-              Button(InputSlot.standardName(slot.code).map { "표준대로(\($0))" } ?? "모름") { slot.port = nil }
-            } label: {
-              Text(slot.portLabel).font(.caption2)
-            }
-            .menuStyle(.borderlessButton).fixedSize()
-            .foregroundStyle(slot.port == nil ? .secondary : .primary)
-            .help("이 번호가 어느 포트인지 고르세요")
+        HStack(spacing: 10) {
+          Toggle("", isOn: $slot.enabled).toggleStyle(.checkbox).labelsHidden().frame(width: 36)
+          HStack(spacing: 4) {
+            Text("\(slot.code)").monospacedDigit()
+            if slot.code == c.thisMac { Text(mark).help("현재 디스플레이(이 맥이 연결된 입력)") }
           }
-          .frame(width: 130, alignment: .leading)
+          .frame(width: 56, alignment: .leading)
+          // 포트 종류는 모니터가 알려 주지 않으니 사용자가 고름(표준표와 다른 모니터가 있어서)
+          Menu {
+            ForEach(InputSlot.portChoices, id: \.self) { p in
+              Button { slot.port = p } label: {
+                if slot.port == p { Label(p, systemImage: "checkmark") } else { Text(p) }
+              }
+            }
+            Divider()
+            Button(InputSlot.standardName(slot.code).map { "표준대로(\($0))" } ?? "모름") { slot.port = nil }
+          } label: {
+            Text(slot.portLabel).font(.callout)
+          }
+          .menuStyle(.borderlessButton).fixedSize()
+          .foregroundStyle(slot.port == nil ? .secondary : .primary)
+          .frame(width: 150, alignment: .leading)
+          .help("이 번호가 어느 포트인지 고르세요")
           TextField("별칭", text: $slot.name, prompt: Text("입력 \(slot.code)")).labelsHidden()
         }
       }
     } header: {
-      HStack {
+      HStack(spacing: 10) {
         Text("메뉴").frame(width: 36)
-        Text("번호 · 포트").frame(width: 130, alignment: .leading)
+        Text("번호").frame(width: 56, alignment: .leading)
+        Text("포트").frame(width: 150, alignment: .leading)
         Text("별칭")
       }
     } footer: {
       footnote(c.fromMonitor
-               ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요. 번호 밑을 눌러 포트 종류를 고를 수 있어요."
+               ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요. 포트를 눌러 종류를 고를 수 있어요."
                : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.")
     }
 
@@ -341,7 +346,7 @@ struct InputList: View {
         Spacer()
       }
     } footer: {
-      footnote("「\(mark) 현재 디스플레이」는 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
+      footnote("번호 옆 \(mark)는 현재 디스플레이 — 이 맥에서 메뉴를 열었을 때 모니터가 보여 주던 입력이에요. 표준 이름은 참고용이고 모니터마다 다를 수 있어요.")
     }
   }
 }
