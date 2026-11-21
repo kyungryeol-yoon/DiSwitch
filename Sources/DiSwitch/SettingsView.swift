@@ -17,14 +17,21 @@ struct SettingsView: View {
 struct GeneralSettings: View {
   @EnvironmentObject private var store: Store
   @AppStorage("thisMacMark") private var mark = ThisMacMark.fallback
-  @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+  @State private var launchAtLogin = false
+  @State private var needsApproval = false
   @State private var error: String?
   @State private var custom = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Toggle("로그인할 때 자동으로 실행", isOn: $launchAtLogin)
-        .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }
+      // 사용자가 눌렀을 때만 등록·해제(상태를 다시 읽어 넣을 때 또 불리지 않게 onChange 대신 Binding의 set에서)
+      Toggle("로그인할 때 자동으로 실행", isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) }))
+      if needsApproval {
+        HStack(spacing: 8) {
+          Text("「로그인 항목」에서 DiSwitch를 허용해야 켜져요.").font(.caption).foregroundStyle(.orange)
+          Button("로그인 항목 열기") { SMAppService.openSystemSettingsLoginItems() }.controlSize(.small)
+        }
+      }
       Text("「시스템 설정 → 일반 → 로그인 항목」에서도 끄고 켤 수 있어요.")
         .font(.caption).foregroundStyle(.secondary)
       if let error { Text(error).foregroundStyle(.red).font(.caption) }
@@ -61,7 +68,7 @@ struct GeneralSettings: View {
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+    .onAppear(perform: readLaunchAtLogin)
   }
 
   /// 미리보기용 입력 이름(연결된 모니터의 실제 별칭, 없으면 예시)
@@ -85,7 +92,14 @@ struct GeneralSettings: View {
     } catch {
       self.error = "바꾸지 못함: \(error.localizedDescription)"
     }
-    launchAtLogin = SMAppService.mainApp.status == .enabled
+    readLaunchAtLogin()
+  }
+
+  /// 실제 상태를 스위치에 반영(등록·해제는 안 함). 허용 대기(.requiresApproval)도 등록은 된 것이라 켜짐으로 보여 줌
+  private func readLaunchAtLogin() {
+    let status = SMAppService.mainApp.status
+    launchAtLogin = status == .enabled || status == .requiresApproval
+    needsApproval = status == .requiresApproval
   }
 }
 

@@ -153,7 +153,19 @@ final class Store: ObservableObject {
     let old = Dictionary(monitors.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
     let skip = fromMenu ? Set(monitors.filter { $0.checked && !$0.responds }.map(\.key)) : []
     Task.detached {
-      let all = DDCMonitor.all().enumerated().map { i, m in (key: m.key.isEmpty ? "\(m.name)#\(i)" : m.key, ddc: m) }
+      // 열쇠가 겹치면(같은 모델 두 대가 둘 다 일련번호 0) 두 번째부터 출력 이름을 덧붙여 구분.
+      // 겹치지 않는 모니터는 열쇠 그대로라 저장된 설정이 유지됨
+      var seen = Set<String>()
+      let all = DDCMonitor.all().enumerated().map { i, m in
+        var key = m.key.isEmpty ? "\(m.name)#\(i)" : m.key
+        if seen.contains(key) { key += "#\(m.port.isEmpty ? String(i) : m.port)" }
+        while seen.contains(key) { key += "#\(i)" }
+        seen.insert(key)
+        return (key: key, ddc: m)
+      }
+      // 메뉴를 연 화면과 맞는 모니터가 여럿이면(일련번호 0인 같은 모델) 어느 쪽인지 모르니 기억하지 않음
+      let mineKeys = display.map { d in all.filter { $0.ddc.matches(d) }.map(\.key) } ?? []
+      let mineKey = mineKeys.count == 1 ? mineKeys[0] : nil
       await MainActor.run {
         // 목록은 바로 보여 주고, 입력은 모니터마다 따로 읽어서 나오는 대로 채움(느린 모니터가 다른 모니터를 막지 않게)
         self.monitors = all.map { m in
@@ -166,7 +178,7 @@ final class Store: ObservableObject {
       for m in all where !skip.contains(m.key) {
         Task.detached {
           let cur = m.ddc.read(VCP.input)?.current
-          let mine = display.map { m.ddc.matches($0) } ?? false
+          let mine = m.key == mineKey
           await MainActor.run { self.update(key: m.key, ddc: m.ddc, current: cur, rememberThisMac: mine) }
         }
       }

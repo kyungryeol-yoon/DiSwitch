@@ -22,8 +22,11 @@ enum VCP {
 /// 바깥 모니터 하나. DDC 명령은 시간이 걸리니(수십~수백 ms) 메인 스레드 밖에서 부를 것
 final class DDCMonitor: @unchecked Sendable {
   let name: String
-  /// 모니터를 구분하는 값(EDID 제조사·모델·일련번호). 같은 모델 두 대도 구분됨
+  /// 모니터를 구분하는 값(EDID 제조사·모델·일련번호). 같은 모델 두 대는 일련번호가 있을 때만 구분됨
+  /// (둘 다 0이면 같은 값 → Store.refresh에서 port를 덧붙임)
   let key: String
+  /// 연결된 디스플레이 출력(IORegistry 부모 이름 앞부분, 예: "dispext0"). 못 찾으면 ""
+  let port: String
   /// macOS 화면(NSScreen)과 맞춰 볼 값 — CGDisplayVendorNumber·ModelNumber·SerialNumber와 같음
   let vendor: UInt32, model: UInt32, serial: UInt32
   private let av: CFTypeRef
@@ -31,8 +34,9 @@ final class DDCMonitor: @unchecked Sendable {
 
   private static let addr: UInt32 = 0x37, sub: UInt32 = 0x51, host: UInt8 = 0x51 ^ 0x6E   // 체크섬 시작값
 
-  private init(av: CFTypeRef) {
+  private init(av: CFTypeRef, port: String) {
     self.av = av
+    self.port = port
     var out: Unmanaged<CFData>?
     let edid = IOAVServiceCopyEDID(av, &out) == KERN_SUCCESS ? out?.takeRetainedValue() as Data? : nil
     self.name = edid.flatMap(Self.edidName) ?? "알 수 없는 모니터"
@@ -61,9 +65,19 @@ final class DDCMonitor: @unchecked Sendable {
       defer { IOObjectRelease(s) }
       let loc = IORegistryEntryCreateCFProperty(s, "Location" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String
       guard loc == "External", let av = IOAVServiceCreateWithService(kCFAllocatorDefault, s)?.takeRetainedValue() else { continue }
-      r.append(DDCMonitor(av: av))
+      r.append(DDCMonitor(av: av, port: portName(s)))
     }
-    return r
+    return r.sorted { $0.port < $1.port }   // 순서를 늘 같게(같은 열쇠 두 대 중 어느 쪽에 구분값이 붙을지가 바뀌지 않게)
+  }
+
+  /// "dispext0:dcpav-service-epic:0" → "dispext0"
+  private static func portName(_ s: io_service_t) -> String {
+    var parent: io_registry_entry_t = 0
+    guard IORegistryEntryGetParentEntry(s, kIOServicePlane, &parent) == KERN_SUCCESS else { return "" }
+    defer { IOObjectRelease(parent) }
+    var buf = [CChar](repeating: 0, count: 128)
+    guard IORegistryEntryGetName(parent, &buf) == KERN_SUCCESS else { return "" }
+    return String(cString: buf).components(separatedBy: ":").first ?? ""
   }
 
   /// EDID에서 모니터 이름(0xFC 칸)
