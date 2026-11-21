@@ -1,7 +1,7 @@
 import ServiceManagement
 import SwiftUI
 
-// 설정창은 Hum·MacInv와 같은 모양: Form + .grouped(시스템 설정처럼 둥근 묶음), 설명은 묶음 아래 footer
+// 설정창은 Hum·MacInv와 같은 카드 모양. 창 높이는 탭 내용에 맞춤(아래 빈 곳이 생기지 않게)
 
 struct SettingsView: View {
   var body: some View {
@@ -10,12 +10,22 @@ struct SettingsView: View {
       IconSettings().tabItem { Label("아이콘", systemImage: "paintbrush") }
       InputSettings().tabItem { Label("입력", systemImage: "list.bullet") }
     }
-    .frame(width: 600, height: 540)
+    .frame(width: 600)
   }
 }
 
-private func footnote(_ s: String) -> some View {
-  Text(s).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+/// 설명 글. 한 줄로 길게 이어지면 읽기 어려워서 문장마다 줄을 바꿈
+private func footnote(_ lines: String...) -> some View {
+  Text(lines.joined(separator: "\n"))
+    .font(.callout).foregroundStyle(.secondary).lineSpacing(3)
+    .fixedSize(horizontal: false, vertical: true)
+}
+
+extension View {
+  /// 탭 내용 높이만큼만 차지하게(창이 그 높이로 맞춰짐)
+  fileprivate func tabContent() -> some View {
+    padding(20).frame(width: 600, alignment: .topLeading).fixedSize(horizontal: false, vertical: true)
+  }
 }
 
 /// 카드 — Hum·MacInv와 같은 값(둥근 10, 옅은 바탕, 얇은 테두리)
@@ -110,11 +120,10 @@ struct GeneralSettings: View {
             MenuPreview(mark: mark, names: previewNames)
           }
         }
-        footnote("메뉴에서 이 Mac이 연결된 입력 옆에 붙어요. 이모지는 ⌃⌘Space로 넣을 수 있어요.")
+        footnote("메뉴에서 이 Mac이 연결된 입력 옆에 붙어요.", "이모지는 ⌃⌘Space로 넣을 수 있어요.")
       }
-      Spacer(minLength: 0)
     }
-    .padding(20)
+    .tabContent()
     .onAppear(perform: readLaunchAtLogin)
     // 시스템 설정에서 로그인 항목을 바꿨을 수 있으니 창이 앞으로 올 때마다 다시 읽음
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in readLaunchAtLogin() }
@@ -190,37 +199,28 @@ struct IconSettings: View {
   @State private var custom = ""
 
   var body: some View {
-    Form {
-      Section {
+    VStack(alignment: .leading, spacing: 12) {
+      Card(title: "메뉴 막대 아이콘") {
         HStack(spacing: 12) {
           MenuBarPreview(symbol: icon, dark: false)
           MenuBarPreview(symbol: icon, dark: true)
           Spacer()
         }
-      } header: {
-        Text("메뉴 막대에서 보기")
-      }
-
-      Section {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 58), spacing: 8)], alignment: .leading, spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(46), spacing: 8), count: 10), alignment: .leading, spacing: 8) {
           ForEach(MenuIcon.candidates, id: \.self) { name in
-            // 기호마다 그림 크기가 달라 작은 것(네모 안 화살표 등)도 잘 보이게 칸을 꽉 채우는 크기로
-            ChoiceTile(selected: icon == name, width: 58, height: 48, action: { icon = name }) {
-              Image(systemName: name).font(.system(size: 22)).imageScale(.large)
+            ChoiceTile(selected: icon == name, width: 46, height: 38, action: { icon = name }) {
+              Image(systemName: name).font(.system(size: 17))
             }
             .help(name)
           }
         }
-        .padding(.vertical, 4)
-      } header: {
-        Text("아이콘")
-      } footer: {
         footnote("누르면 메뉴 막대 아이콘이 바로 바뀌어요.")
       }
 
-      Section {
+      Card(title: "SF Symbols 이름으로 직접 넣기") {
         HStack {
           TextField("이름", text: $custom, prompt: Text("예: display.2"))
+            .textFieldStyle(.roundedBorder).frame(width: 240)
             .onSubmit(applyCustom)
           if MenuIcon.exists(custom) {
             Image(systemName: custom).font(.system(size: 16)).frame(width: 24)
@@ -229,13 +229,10 @@ struct IconSettings: View {
             Text("그런 이름 없음").foregroundStyle(.red)
           }
         }
-      } header: {
-        Text("SF Symbols 이름으로 직접 넣기")
-      } footer: {
         footnote("지금: \(icon)").textSelection(.enabled)
       }
     }
-    .formStyle(.grouped)
+    .tabContent()
   }
 
   private func applyCustom() {
@@ -277,9 +274,7 @@ struct InputSettings: View {
   }
 
   var body: some View {
-    // 입력이 많은 모니터만 스크롤되게(보통은 한 화면에 다 들어옴)
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 12) {
         if keys.isEmpty {
           Card {
             Text(store.scanning.isEmpty ? "DDC로 제어할 수 있는 모니터가 없어요." : "모니터에서 입력 번호를 읽는 중…")
@@ -312,9 +307,8 @@ struct InputSettings: View {
           }
           InputList(key: key)
         }
-      }
-      .padding(20)
     }
+    .tabContent()
   }
 }
 
@@ -375,10 +369,10 @@ struct InputList: View {
           }
         }
       }
-      footnote((c.fromMonitor
-                ? "모니터가 알려 준 입력 번호예요. 어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요."
-                : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.")
-               + " 포트를 눌러 종류를 고를 수 있어요. 번호 옆 \(mark)는 현재 디스플레이(이 Mac이 연결된 입력)예요. 표준 이름은 참고용이에요.")
+      footnote(c.fromMonitor ? "모니터가 알려 준 입력 번호예요." : "이 모니터는 입력 번호 목록을 알려 주지 않아서 흔한 번호로 채웠어요. 안 되는 번호는 끄세요.",
+               "어느 기기가 꽂혀 있는지는 알 수 없으니 별칭을 붙여 주세요.",
+               "포트를 눌러 종류를 고를 수 있어요. 표준 이름은 참고용이에요.",
+               "번호 옆 \(mark)는 현재 디스플레이(이 Mac이 연결된 입력)예요.")
         .padding(.horizontal, 4)
     }
   }
