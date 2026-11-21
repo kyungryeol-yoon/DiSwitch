@@ -54,6 +54,14 @@ struct MenuContent: View {
       }
     }
     Divider()
+    // 자주 켜고 끄는 거라 설정창 대신 메뉴에 둠. 이 맥 입력(표시)을 알아야 동작
+    Toggle("다른 입력일 때 이 맥 깨워 두기", isOn: $store.keepAwake)
+    if store.keepingAwake {
+      Text("지금 깨워 두는 중 — 이 맥으로 돌아오면 풀려요")
+    } else if store.keepAwake && !store.monitors.contains(where: { store.config($0)?.thisMac != nil }) {
+      Text("이 맥 입력을 몰라요 — 이 맥 화면에서 메뉴를 열어 주세요")
+    }
+    Divider()
     Button("새로고침") { store.refresh() }
     Button("설정…") {
       NSApp.activate()

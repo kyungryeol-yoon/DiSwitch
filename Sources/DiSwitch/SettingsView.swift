@@ -8,7 +8,7 @@ struct SettingsView: View {
       IconSettings().tabItem { Label("아이콘", systemImage: "paintbrush") }
       InputSettings().tabItem { Label("입력", systemImage: "list.bullet") }
     }
-    .frame(width: 520, height: 540)
+    .frame(width: 520, height: 460)
   }
 }
 
@@ -36,13 +36,7 @@ struct GeneralSettings: View {
         .font(.caption).foregroundStyle(.secondary)
       if let error { Text(error).foregroundStyle(.red).font(.caption) }
 
-      Divider().padding(.vertical, 4)
-
-      Toggle("모니터가 다른 입력을 보여 주는 동안 이 맥을 깨워 두기", isOn: $store.keepAwake)
-      Text(awakeNote).font(.caption).foregroundStyle(store.keepingAwake ? .green : .secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Divider().padding(.vertical, 4)
+      Divider().padding(.vertical, 8)
 
       Text("현재 디스플레이 표시").font(.headline)
       Text("메뉴에서 지금 쓰고 있는 이 맥이 연결된 입력 옆에 붙어요.").foregroundStyle(.secondary)
@@ -75,14 +69,6 @@ struct GeneralSettings: View {
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
     .onAppear(perform: readLaunchAtLogin)
-  }
-
-  private var awakeNote: String {
-    if store.keepingAwake { return "지금 깨워 두는 중이에요. 모니터가 이 맥으로 돌아오면 풀어요." }
-    if store.keepAwake && !store.monitors.contains(where: { store.config($0)?.thisMac != nil }) {
-      return "이 맥의 입력(\(mark))을 아직 몰라요. 모니터에 이 맥 화면이 보일 때 메뉴를 한 번 열어 주세요."
-    }
-    return "덮개를 닫고 쓰는 맥북이 잠들지 않아서, 다시 이 맥으로 넘어올 때 키보드로 깨우지 않아도 돼요. 모니터를 빼면 저절로 풀려요."
   }
 
   /// 미리보기용 입력 이름(연결된 모니터의 실제 별칭, 없으면 예시)
