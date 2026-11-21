@@ -10,7 +10,7 @@ struct InputSlot: Codable, Identifiable, Hashable {
 
   var displayName: String { name.isEmpty ? "입력 \(code)" : name }
 
-  /// MCCS 표준표의 이름. 모니터마다 다를 수 있어서(필립스 32M2N8900은 15번이 USB-C) 참고로만 보여 줌
+  /// MCCS 표준표의 이름. 모니터마다 다를 수 있어서(필립스 32M2N8900은 USB-C가 표준표에 없는 0x15 = 21) 참고로만 보여 줌
   static func standardName(_ code: Int) -> String? {
     switch code {
     case 0x01: "VGA 1"
@@ -39,12 +39,13 @@ struct MonitorConfig: Codable {
   /// 입력 목록을 모니터의 기능 목록에서 가져왔는지(false면 흔한 번호로 짐작한 것)
   var fromMonitor: Bool
 
-  /// 모니터가 알려 준 번호로 목록을 만듦. 표준표에 있는 번호만 보이게 하고 나머지는 숨김
-  static func make(name: String, codes: [Int]?) -> MonitorConfig {
-    let list = Array(Set(codes ?? InputSlot.fallbackCodes)).sorted()
+  /// 모니터가 알려 준 번호로 목록을 만듦. 표준표에 있는 번호와 지금 입력만 보이게 하고 나머지는 숨김
+  /// (지금 입력은 실제로 쓰이는 입력이 확실함 — 필립스 32M2N8900의 USB-C 0x15처럼 표준표에 없는 번호일 수 있음)
+  static func make(name: String, codes: [Int]?, current: Int? = nil) -> MonitorConfig {
+    let list = Array(Set((codes ?? InputSlot.fallbackCodes) + [current].compactMap { $0 })).sorted()
     return MonitorConfig(
       name: name,
-      inputs: list.map { InputSlot(code: $0, enabled: InputSlot.standardName($0) != nil) },
+      inputs: list.map { InputSlot(code: $0, enabled: $0 == current || InputSlot.standardName($0) != nil) },
       thisMac: nil,
       fromMonitor: codes != nil)
   }
@@ -191,18 +192,19 @@ final class Store: ObservableObject {
     if let current { monitors[i].current = current; monitors[i].responds = true }
     monitors[i].checked = true
     guard let current else { return }
-    if configs[key] == nil { scanInputs(key: key, ddc: ddc) }
+    if configs[key] == nil { scanInputs(key: key, ddc: ddc, current: current) }
     if rememberThisMac, configs[key] != nil, configs[key]?.thisMac != current { configs[key]?.thisMac = current }
   }
 
   /// 모니터에게 입력 번호 목록을 물어서 입력 목록을 (다시) 만듦. 이미 붙인 별칭은 번호가 같으면 유지
-  func scanInputs(key: String, ddc: DDCMonitor) {
+  /// current: 지금 입력(읽었으면) — 새로 생기는 번호 중 이 번호는 보이게 함
+  func scanInputs(key: String, ddc: DDCMonitor, current: Int? = nil) {
     guard !scanning.contains(key) else { return }
     scanning.insert(key)
     Task.detached {
       let codes = ddc.capabilities().flatMap(DDCMonitor.inputCodes)
       await MainActor.run {
-        var new = MonitorConfig.make(name: ddc.name, codes: codes)
+        var new = MonitorConfig.make(name: ddc.name, codes: codes, current: current)
         // 이미 붙인 별칭과 보임 여부는 유지(0.1의 모니터 공통 목록 "inputs"도 처음 한 번 옮겨 옴)
         let prev = self.configs[key]?.inputs ?? Self.takeLegacyInputs()
         new.thisMac = self.configs[key]?.thisMac

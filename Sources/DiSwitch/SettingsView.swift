@@ -288,7 +288,7 @@ struct InputList: View {
       HStack {
         if let m = store.monitors.first(where: { $0.key == key }) {
           Button(store.scanning.contains(key) ? "읽는 중…" : "모니터에서 번호 다시 읽기") {
-            store.scanInputs(key: key, ddc: m.ddc)
+            store.scanInputs(key: key, ddc: m.ddc, current: m.current)
           }
           .disabled(store.scanning.contains(key))
         }
