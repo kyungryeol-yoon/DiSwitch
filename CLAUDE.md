@@ -19,7 +19,7 @@
 - **신호 없는 입력으로 보내면 모니터가 신호 있는 입력을 스스로 찾아감**(필립스: 비어 있는 DP 15를 보내면 USB-C 21로 넘어감) → 「이 번호로 그 기기가 나온다」가 맞는 번호라는 증거가 아님. 넘긴 뒤 읽은 번호로 확인
 
 ## 구조(`Sources/DiSwitch/`, SwiftUI `MenuBarExtra`)
-- `DDC.swift` 모니터 읽기/쓰기·기능 목록 해석 · `Store.swift` 상태·모니터별 설정 · `App.swift` 메뉴 · `SettingsView.swift` 설정창(일반·아이콘·입력) · `LegacyDefaults.swift` 옛 번들 ID 설정 옮기기
+- `DDC.swift` 모니터 읽기/쓰기·기능 목록 해석 · `Store.swift` 상태·모니터별 설정 · `App.swift` 메뉴 · `SettingsView.swift` 설정창(일반·아이콘·입력) · `KeepAwake.swift` 깨워 두기(power assertion) · `LegacyDefaults.swift` 옛 번들 ID 설정 옮기기
 - `Sources/ddc.swift` — 시험용 명령줄(`swiftc -O -o ddc Sources/ddc.swift -framework IOKit` → `./ddc list` · `set <순번> <입력> [되돌릴 초]` · `caps <순번>`)
 
 ## 정한 것
@@ -31,8 +31,10 @@
   - 화면 ↔ DDC 모니터 맞추기: EDID 8~9(제조사, 큰 끝) · 10~11(모델, 작은 끝) · 12~15(일련번호, 작은 끝) = `CGDisplayVendorNumber`·`ModelNumber`·`SerialNumber`
 - **`thisMac`**(이 맥의 입력): 메뉴를 열 때 **마우스가 있는 화면이 그 모니터일 때만** 지금 입력을 기억. 다른 모니터에서 열면·앱을 켤 때·전환 뒤엔 기억 안 함(다른 모니터에서 열었을 때 틀리던 문제 때문). 처음 보는 모니터라 입력 목록을 읽는 중이면 `pendingThisMac`에 두었다가 목록이 생길 때 넣음. 3초 안에 다시 열면 다시 읽지 않고 방금 읽은 값으로 기억
 - 로그인 자동 실행 스위치: 사용자가 눌렀을 때만 등록·해제(`Toggle`의 `Binding` set에서. `onChange`로 하면 상태를 다시 읽어 넣을 때 또 불려 오류가 지워지거나 허용 대기 항목을 지움). `.requiresApproval`은 켜짐으로 보이고 「로그인 항목 열기」 안내. Hum과 같은 방식
-- **깨워 두기**(메뉴의 스위치 — 자주 켜고 꺼서 설정창이 아니라 메뉴에. UserDefaults `keepAwake`, 기본 꺼짐, `KeepAwake.swift`): `thisMac`을 아는 모니터가 다른 입력을 보여 주면 power assertion(`PreventUserIdleDisplaySleep`·`PreventSystemSleep`)으로 잠들기를 막음. 권한·배터리 경고 없음. 켜져 있으면 20초마다 그 모니터의 입력을 읽음(다른 맥에서 바꾼 걸 알려고). 이 맥으로 돌아오면 풀고 `IOPMAssertionDeclareUserActivity`(풀자마자 화면이 꺼지지 않게). 모니터를 빼면 목록이 비어 저절로 풂. 덮개 닫은 맥북에서 통함 확인(v0.1.5)
-- 현재 디스플레이 표시(UserDefaults `thisMacMark`, 기본 ◀︎) · 메뉴 막대 아이콘은 SF Symbols에서 고름(기본 `display.2`, `rectangle.on.rectangle`은 미러링과 같아 뺌) · 로그인 자동 실행(`SMAppService`)
+- **깨워 두기**(메뉴의 스위치 — 자주 켜고 꺼서 설정창이 아니라 메뉴에. 체크 = 기능 켬, 밑 줄 = 지금 상태(「깨워 두는 중」/「대기 중」) — 둘을 한 줄로 합치면 헷갈려 함. UserDefaults `keepAwake`, 기본 꺼짐): `thisMac`을 아는 모니터가 다른 입력을 보여 주면 power assertion(`PreventUserIdleDisplaySleep`·`PreventSystemSleep`)으로 잠들기를 막음. 권한·배터리 경고 없음. 켜져 있으면 20초마다 그 모니터의 입력을 읽음(다른 맥에서 바꾼 걸 알려고). 이 맥으로 돌아오면 풀고 `IOPMAssertionDeclareUserActivity`(풀자마자 화면이 꺼지지 않게). 모니터를 빼면 목록이 비어 저절로 풂. 덮개 닫은 맥북에서 통함 확인(v0.1.5)
+  - 한계: 화면 신호를 계속 내보내는 방식이라 모니터의 **입력 자동 전환**과 겹침 — 다른 기기의 화면이 꺼지면(신호 끊김) 모니터가 절전 대신 이 맥으로 넘어옴. 그래서 늘 켜 두는 맥에선 끄고, 모니터 자동 전환을 끄는 걸 README에 안내. 화면 끄기는 막지 않고 시스템 잠들기만 막으면 이 문제는 없지만 돌아올 때 「신호 없음」이 다시 생김(맞바꿈)
+- 현재 디스플레이 표시(UserDefaults `thisMacMark`, 기본 ◀︎) · 메뉴 막대 아이콘은 SF Symbols에서 고름(기본 `display.2`, `rectangle.on.rectangle`은 미러링과 같아 뺌)
+- 설정창: Hum·MacInv와 같은 모양(`Form` + `.formStyle(.grouped)`, 설명은 Section footer, 맨 아래 버전·GitHub). 입력 탭은 한 줄에 체크박스·번호(+표시)·포트·별칭 — 스크롤 적게. 창 600×540
 - 다시 읽는 때: 켤 때 · 메뉴 열 때 · 전환 4초 뒤 · 모니터 꽂기/빼기·배치 변경(2초 뒤) · 깨어남(3초 뒤). 모니터마다 따로·동시에 읽음(응답 없는 모니터가 다른 모니터를 막지 않음). 메뉴를 열 때는 응답 없던 모니터를 건너뜀, 「새로고침」은 전부
 - 앱 아이콘: 어두운 바탕 + 모니터 두 대(뒤 주황·앞 파랑) + ⇄ 배지 — `packaging/make-icon.swift`
 
@@ -41,14 +43,18 @@
 - 태그 `vX.Y.Z` 푸시 → `.github/workflows/release.yml`(macos-26 + 최신 Xcode) → Release zip → `homebrew-tap`의 `Casks/diswitch.rb` 갱신(`TAP_TOKEN`, v0.1.1에서 자동 갱신 확인)
 - cask 틀 `packaging/diswitch.rb`: `depends_on macos: :sequoia`, quarantine은 `postflight_steps`의 `run "/usr/bin/xattr"`로 지움(`writable_paths` 필요), `zap`은 `defaults delete`를 먼저(plist만 버리면 cfprefsd가 들고 있던 옛 설정이 살아남) + 옛 ID plist도
 - 설치 `brew install --cask kyungryeol-yoon/tap/diswitch`. 새 버전이 안 보이면 `brew update` 먼저
+- 이 맥엔 `gh`가 없음 → 릴리스 진행은 `curl https://api.github.com/repos/kyungryeol-yoon/DiSwitch/actions/runs?per_page=1`, tap 반영은 `homebrew-tap` raw의 `version` 줄로 확인
+- 실행 중인 DiSwitch를 끄거나(개발판 띄우기 등) 바꿀 때는 먼저 물어보고, 끝나면 설치된 앱을 다시 켜 둠
 
 ## 시험 환경(이 맥 미니, 저장소엔 넣지 않음)
 - 맥 미니 M4 — 필립스 32M2N8900(HDMI2) + BenQ GW2780(DDC 못 읽음)
 - 필립스 입력 번호: HDMI1 = 17(닌텐도) · HDMI2 = 18(맥 미니) · USB-C = 21(맥북, 0x15). DP 15는 비어 있음. 기능 목록 `60(11 12 0F 15 21 22 2F 35)`
 - 모니터가 새 입력에 화면을 잡는 데 몇 초 걸림 — 시험은 8~10초씩
-- 맥북을 덮개 닫고(클램셸) 쓰면 모니터가 다른 입력에 가 있는 동안 잠듦 → 돌아와도 「신호 없음」
+- 맥북을 덮개 닫고(클램셸) 쓰면 모니터가 다른 입력에 가 있는 동안 잠듦 → 돌아와도 「신호 없음」. 맥북에서 깨워 두기를 켜면 해결
+- 맥 미니는 서버라 잠들면 안 됨 → 디스플레이만 2분 뒤 끄기. 필립스는 OLED라 꺼짐보다 절전으로 쉬게 함
+- 필립스는 신호가 끊기면 신호 있는 입력으로 스스로 넘어감(입력 자동 전환). 맥 미니 화면이 꺼질 때 맥북이 깨어 있으면 맥북으로 넘어가 OLED가 계속 켜짐 → **맥 미니에선 깨워 두기 끔**, 맥북은 자기 전에 깨워 두기 끔(또는 모니터 자동 전환 끄기)
 
 ## 다음에 할 것
 - [ ] 로그인 자동 실행: 재시동해서 뜨는지 확인(v0.1.2에서 다시 켬 — 로그인 항목에 DiSwitch 하나만, 옛 항목 안 남음 확인)
 - [ ] BenQ 화면에서 메뉴 열기 시험: ✓는 필립스가 보여 주는 입력, 현재 디스플레이 표시는 맥 미니(18) 그대로인지
-- 계획: ① 전역 단축키 ② 입력 번호 찾기(번호를 하나씩 보내고 8초 뒤 자동 복귀 → 「방금 무엇이 보였나요?」) ③ (선택) 한 모니터를 맥 여러 대가 쓸 때 앱끼리 네트워크로 서로 찾기·덮개 닫은 맥북 깨우기 ④ `ddc.swift`와 앱 DDC 코드 중복 정리
+- 계획: ① 전역 단축키 ② 입력 번호 찾기(번호를 하나씩 보내고 8초 뒤 자동 복귀 → 「방금 무엇이 보였나요?」) ③ (선택) 한 모니터를 맥 여러 대가 쓸 때 앱끼리 네트워크로 서로 찾기(덮개 닫은 맥북은 깨워 두기로 해결) ④ `ddc.swift`와 앱 DDC 코드 중복 정리 ⑤ (생각만) 깨워 두기 자동으로 풀기 — 시간 제한(예 2시간)이나 밤 시간대. 자기 전에 손으로 끄는 걸 잊지 않게
