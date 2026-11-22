@@ -123,24 +123,14 @@ final class Store: ObservableObject {
   /// 입력 목록을 아직 읽는 중인 모니터에서 메뉴를 열었을 때, 목록이 생기면 넣을 이 맥 입력
   private var pendingThisMac: [String: Int] = [:]
 
-  /// 모니터가 다른 입력을 보여 주는 동안 이 맥을 깨워 둘지(설정, 기본 꺼짐)
-  @Published var keepAwake = UserDefaults.standard.bool(forKey: "keepAwake") {
-    didSet { UserDefaults.standard.set(keepAwake, forKey: "keepAwake"); restartPoll(); updateKeepAwake() }
-  }
-  /// 지금 깨워 두는 중인지(설정창에 보여 줌)
-  @Published private(set) var keepingAwake = false
-  private let awake = KeepAwake()
-  private var wasAway = false
-  private var poll: Task<Void, Never>?
-
   init() {
     if let d = UserDefaults.standard.data(forKey: "monitors"), let v = try? JSONDecoder().decode([String: MonitorConfig].self, from: d) {
       configs = v
     } else {
       configs = [:]
     }
+    UserDefaults.standard.removeObject(forKey: "keepAwake")   // 0.1.5~0.1.10의 깨워 두기 설정(기능을 뺌)
     refresh()
-    restartPoll()
     // 메뉴를 열 때마다 지금 입력을 다시 읽음.
     // 마우스가 있는 화면의 모니터 = 사용자가 지금 보고 있는 화면 = 이 맥을 보여 주는 중 → 그 모니터의 지금 입력을 이 맥 입력으로 기억
     // (다른 모니터에서 메뉴를 열면 기억하지 않음 — 그 모니터는 다른 기기를 보여 주는 중일 수 있음)
@@ -219,7 +209,6 @@ final class Store: ObservableObject {
                              responds: o?.responds ?? false, checked: o?.checked ?? false)
         }
         self.loading = false
-        self.updateKeepAwake()
       }
       for m in all where !skip.contains(m.key) {
         Task.detached {
@@ -237,7 +226,6 @@ final class Store: ObservableObject {
     if let current { monitors[i].current = current; monitors[i].responds = true }
     monitors[i].checked = true
     guard let current else { return }
-    defer { updateKeepAwake() }
     if configs[key] == nil { scanInputs(key: key, ddc: ddc, current: current) }
     if rememberThisMac { self.rememberThisMac(key: key, current: current) }
   }
@@ -280,49 +268,11 @@ final class Store: ObservableObject {
 
   func switchInput(_ monitor: MonitorItem, to code: Int) {
     if let i = monitors.firstIndex(where: { $0.id == monitor.id }) { monitors[i].current = code }
-    updateKeepAwake()
     let ddc = monitor.ddc
     Task.detached {
       ddc.write(VCP.input, code)
       try? await Task.sleep(for: .seconds(4))   // 모니터가 새 입력을 잡는 동안은 읽기 응답이 없음
       await MainActor.run { self.refresh() }
-    }
-  }
-
-  // MARK: - 깨워 두기
-
-  /// 이 맥 입력을 아는 모니터 중 하나라도 다른 입력을 보여 주면 깨워 둠.
-  /// 모니터를 빼면(밖에서 쓸 때) 목록이 비어서 저절로 풂
-  private func updateKeepAwake() {
-    let away = monitors.contains { m in
-      guard let cur = m.current, let me = configs[m.key]?.thisMac else { return false }
-      return cur != me
-    }
-    // 다른 입력에 가 있다가 이 맥으로 돌아오면 사용자 활동을 알림(꺼진 화면을 켜고, 풀자마자 잠들지 않게)
-    if keepAwake, wasAway, !away { awake.declareActivity() }
-    wasAway = away
-    awake.set(keepAwake && away)
-    if keepingAwake != awake.isOn { keepingAwake = awake.isOn }
-  }
-
-  /// 깨워 두기가 켜져 있으면 이 맥 입력을 아는 모니터의 지금 입력을 20초마다 읽음
-  /// (다른 맥에서 입력을 바꾼 걸 알아채려고. 응답 없는 모니터는 건너뜀)
-  private func restartPoll() {
-    poll?.cancel()
-    poll = nil
-    guard keepAwake else { return }
-    poll = Task { [weak self] in
-      while !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(20))
-        guard let self, !Task.isCancelled else { return }
-        for m in self.monitors where m.responds && self.configs[m.key]?.thisMac != nil {
-          let key = m.key, ddc = m.ddc
-          Task.detached {
-            let cur = ddc.read(VCP.input)?.current
-            await MainActor.run { self.update(key: key, ddc: ddc, current: cur, rememberThisMac: false) }
-          }
-        }
-      }
     }
   }
 }
