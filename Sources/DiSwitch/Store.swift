@@ -122,6 +122,13 @@ final class Store: ObservableObject {
   private var pendingRefresh: Task<Void, Never>?
   /// 입력 목록을 아직 읽는 중인 모니터에서 메뉴를 열었을 때, 목록이 생기면 넣을 이 맥 입력
   private var pendingThisMac: [String: Int] = [:]
+  /// 지금 입력을 몇 초마다 읽어 둠 — 다른 기기에서 바꾸거나 모니터가 스스로 넘어가도(입력 자동 전환) 메뉴를 처음 열 때부터 맞게
+  private var poll: Task<Void, Never>?
+  private var polling = Set<String>()
+  /// 이 맥의 화면이 꺼져 있는 동안엔 읽지 않음(메뉴를 열 일이 없음)
+  private var screensAsleep = false
+  /// 방금 입력을 바꿨으면 잠깐 읽지 않음(모니터가 아직 옛 입력을 알려 주면 ✓가 되돌아가 보임)
+  private var lastSwitch = Date.distantPast
 
   init() {
     if let d = UserDefaults.standard.data(forKey: "monitors"), let v = try? JSONDecoder().decode([String: MonitorConfig].self, from: d) {
@@ -131,6 +138,7 @@ final class Store: ObservableObject {
     }
     UserDefaults.standard.removeObject(forKey: "keepAwake")   // 0.1.5~0.1.10의 깨워 두기 설정(기능을 뺌)
     refresh()
+    startPoll()
     // 메뉴를 열 때마다 지금 입력을 다시 읽음.
     // 마우스가 있는 화면의 모니터 = 사용자가 지금 보고 있는 화면 = 이 맥을 보여 주는 중 → 그 모니터의 지금 입력을 이 맥 입력으로 기억
     // (다른 모니터에서 메뉴를 열면 기억하지 않음 — 그 모니터는 다른 기기를 보여 주는 중일 수 있음)
@@ -154,6 +162,12 @@ final class Store: ObservableObject {
     })
     observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated { self?.refreshSoon(after: 3) }
+    })
+    observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.screensAsleep = true }
+    })
+    observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.screensAsleep = false }
     })
   }
 
@@ -267,12 +281,36 @@ final class Store: ObservableObject {
   }
 
   func switchInput(_ monitor: MonitorItem, to code: Int) {
+    lastSwitch = Date()
     if let i = monitors.firstIndex(where: { $0.id == monitor.id }) { monitors[i].current = code }
     let ddc = monitor.ddc
     Task.detached {
       ddc.write(VCP.input, code)
       try? await Task.sleep(for: .seconds(4))   // 모니터가 새 입력을 잡는 동안은 읽기 응답이 없음
       await MainActor.run { self.refresh() }
+    }
+  }
+
+  /// 5초마다 응답하는 모니터의 지금 입력을 읽음(읽기만 함. 응답 없는 모니터는 건너뜀, 한 모니터를 겹쳐 읽지 않음)
+  private func startPoll() {
+    poll = Task { [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .seconds(5))
+        guard let self else { return }
+        if self.screensAsleep || Date().timeIntervalSince(self.lastSwitch) < 6 { continue }
+        for m in self.monitors where m.responds && !self.polling.contains(m.key) {
+          let key = m.key, ddc = m.ddc
+          self.polling.insert(key)
+          Task.detached {
+            let cur = ddc.read(VCP.input)?.current
+            await MainActor.run {
+              self.polling.remove(key)
+              // 읽는 사이에 입력을 바꿨으면 버림
+              if Date().timeIntervalSince(self.lastSwitch) >= 6 { self.update(key: key, ddc: ddc, current: cur, rememberThisMac: false) }
+            }
+          }
+        }
+      }
     }
   }
 }
